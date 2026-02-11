@@ -1,0 +1,47 @@
+<!-- 视频源模态框内容 (通过 AJAX 加载) -->
+{% if sources|length > 0 %}
+<div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="color:var(--text-muted);font-size:0.85rem;">
+        {{ anime.title_cn }} · 第{{ episode.absolute_num }}集 · 共 {{ sources|length }} 个视频源
+    </span>
+    <button class="btn btn--secondary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
+        🔄 重新搜索
+    </button>
+</div>
+
+{% for source in sources %}
+<div class="source-item">
+    <div class="source-item__info">
+        <div class="source-item__title">{{ source.title }}</div>
+        <div class="source-item__meta">
+            <span>📺 {{ source.channel_name or '未知频道' }}</span>
+            <span>⏱️ {{ source.duration_fmt }}</span>
+            <span>👁️ {{ source.view_count_fmt }}</span>
+            {% if source.published_at %}
+            <span>📅 {{ source.published_at }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="source-item__score
+        {% if source.match_score >= 70 %}source-item__score--high
+        {% elif source.match_score >= 50 %}source-item__score--medium
+        {% else %}source-item__score--low{% endif %}">
+        {{ "%.0f"|format(source.match_score) }}分
+    </div>
+
+    <a href="{{ source.youtube_url }}" target="_blank" rel="noopener" class="source-item__link">
+        ▶ 播放
+    </a>
+</div>
+{% endfor %}
+
+{% else %}
+<div style="text-align:center;padding:40px;">
+    <div style="font-size:2.5rem;margin-bottom:12px;opacity:0.5;">🔍</div>
+    <div style="color:var(--text-secondary);margin-bottom:16px;">暂无视频源</div>
+    <button class="btn btn--primary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }})">
+        🔍 搜索视频源
+    </button>
+</div>
+{% endif %}

@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}设置 - 追漫阁{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-header__title">系统设置</h1>
+    <p class="page-header__subtitle">配置同步参数和系统选项</p>
+</div>
+
+<!-- 自动同步 -->
+<div class="settings-section">
+    <h3 class="settings-section__title">⏰ 自动同步</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">启用自动同步</span>
+            <span class="settings-row__label-desc">定时自动搜索并更新视频源</span>
+        </div>
+        <div class="settings-row__control">
+            <label class="toggle">
+                <input type="checkbox" data-setting="auto_sync_enabled" {% if settings.get('auto_sync_enabled', 'true'
+                    )=='true' %}checked{% endif %}>
+                <span class="toggle__slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">同步间隔（分钟）</span>
+            <span class="settings-row__label-desc">两次自动同步之间的间隔时间</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-setting="auto_sync_interval"
+                value="{{ settings.get('auto_sync_interval', '360') }}" min="30" max="10080" style="width:120px;">
+        </div>
+    </div>
+</div>
+
+<!-- 匹配参数 -->
+<div class="settings-section">
+    <h3 class="settings-section__title">🎯 匹配参数</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">最低匹配分数</span>
+            <span class="settings-row__label-desc">低于此分数的视频源将被过滤</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-setting="match_threshold" value="{{ settings.get('match_threshold', '50') }}"
+                min="0" max="100" style="width:100px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">推荐匹配分数</span>
+            <span class="settings-row__label-desc">高于此分数视为高质量匹配</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-setting="match_recommend_threshold"
+                value="{{ settings.get('match_recommend_threshold', '70') }}" min="0" max="100" style="width:100px;">
+        </div>
+    </div>
+</div>
+
+<!-- Invidious 配置 -->
+<div class="settings-section">
+    <h3 class="settings-section__title">🌐 Invidious 配置</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">Invidious 实例地址</span>
+            <span class="settings-row__label-desc">用于搜索 YouTube 视频的镜像实例</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-setting="invidious_url" value="{{ settings.get('invidious_url', '') }}"
+                placeholder="https://invidious.example.com" style="width:280px;">
+        </div>
+    </div>
+</div>
+
+<!-- Telegram 推送 -->
+<div class="settings-section">
+    <h3 class="settings-section__title">📱 Telegram 推送</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">Bot Token</span>
+            <span class="settings-row__label-desc">Telegram Bot 的 API Token</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-setting="tg_bot_token" value="{{ settings.get('tg_bot_token', '') }}"
+                placeholder="123456:ABC-DEF..." style="width:280px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">Chat ID</span>
+            <span class="settings-row__label-desc">接收消息的聊天 ID</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-setting="tg_chat_id" value="{{ settings.get('tg_chat_id', '') }}"
+                placeholder="-100123456789" style="width:200px;">
+        </div>
+    </div>
+</div>
+
+<!-- 备份与恢复 -->
+<div class="settings-section">
+    <h3 class="settings-section__title">💾 备份与恢复</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">导出备份</span>
+            <span class="settings-row__label-desc">下载所有追更数据为 JSON 文件</span>
+        </div>
+        <div class="settings-row__control">
+            <button class="btn btn--primary btn--sm" onclick="window.location.href='/api/backup/export'">📥 导出
+                JSON</button>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">导入备份</span>
+            <span class="settings-row__label-desc">从 JSON 文件恢复数据（合并模式）</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importBackup(this)">
+            <button class="btn btn--secondary btn--sm" onclick="document.getElementById('import-file').click()">📤
+                选择文件</button>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">定时备份到 Telegram</span>
+            <span class="settings-row__label-desc">自动定期将备份发送到 Telegram</span>
+        </div>
+        <div class="settings-row__control">
+            <label class="toggle">
+                <input type="checkbox" data-setting="tg_backup_enabled" {% if settings.get('tg_backup_enabled', 'false'
+                    )=='true' %}checked{% endif %}>
+                <span class="toggle__slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">备份间隔（天）</span>
+            <span class="settings-row__label-desc">每隔多少天自动发送一次备份</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-setting="tg_backup_interval_days"
+                value="{{ settings.get('tg_backup_interval_days', '1') }}" min="1" max="30" style="width:80px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">手动备份</span>
+            <span class="settings-row__label-desc">立即发送一次备份到 Telegram</span>
+        </div>
+        <div class="settings-row__control">
+            <button class="btn btn--secondary btn--sm" id="tg-backup-btn" onclick="telegramBackup()">📨 发送到 TG</button>
+        </div>
+    </div>
+</div>
+
+<!-- 修改密码 -->
+<div class="settings-section">
+    <h3 class="settings-section__title">🔑 访问密码</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">当前密码</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="password" id="old-password" placeholder="输入当前密码" style="width:200px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">新密码</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="password" id="new-password" placeholder="输入新密码" style="width:200px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text"></span>
+        </div>
+        <div class="settings-row__control">
+            <button class="btn btn--secondary btn--sm" onclick="changePassword()">🔒 修改密码</button>
+        </div>
+    </div>
+</div>
+
+<!-- 保存按钮 -->
+<div style="margin-top:24px;">
+    <button class="btn btn--primary" onclick="saveSettings()">💾 保存设置</button>
+</div>
+
+<!-- 系统信息 -->
+<div class="settings-section" style="margin-top:32px;opacity:0.7;">
+    <h3 class="settings-section__title">ℹ️ 系统信息</h3>
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">版本</span>
+        </div>
+        <div style="color:var(--text-muted);font-size:0.85rem;font-family:var(--font-mono);">v1.0.0</div>
+    </div>
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">技术栈</span>
+        </div>
+        <div style="color:var(--text-muted);font-size:0.85rem;">Python 3.11 + Flask 3.0 + SQLite</div>
+    </div>
+</div>
+{% endblock %}

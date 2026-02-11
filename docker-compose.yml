@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  zhuimange:
+    build: .
+    container_name: zhuimange
+    restart: unless-stopped
+    ports:
+      - "8280:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/tracker.db
+      - TZ=Asia/Shanghai
