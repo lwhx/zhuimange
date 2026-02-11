@@ -212,7 +212,7 @@ zhuimange/
 | 配置项 | 说明 | 获取方式 |
 |--------|------|----------|
 | `TMDB_API_KEY` | TMDB API 密钥 | [申请地址](https://www.themoviedb.org/settings/api) |
-| `INVIDIOUS_URL` | Invidious 实例地址 | [实例列表](https://docs.invidious.io/instances/) |
+| `INVIDIOUS_URL` | Invidious 实例地址（建议自建） | [实例列表](https://docs.invidious.io/instances/) |
 
 ### 可选配置
 
@@ -221,7 +221,7 @@ zhuimange/
 | `DATABASE_PATH` | `./data/tracker.db` | 数据库路径 |
 | `TZ` | `Asia/Shanghai` | 时区 |
 | `LOG_LEVEL` | `INFO` | 日志级别（DEBUG / INFO / WARNING / ERROR） |
-| `SECRET_KEY` | - | Flask 密钥 |
+| `SECRET_KEY` | admin | Flask 密钥 |
 | `PORT` | `8000` | 服务端口 |
 
 ---
