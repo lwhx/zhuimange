@@ -280,19 +280,11 @@ def sync_anime_stream(anime_id):
                 logger.error(f"同步失败: {anime['title_cn']} 第{ep_num}集 - {e}")
                 return ep_num, 0
 
-        # 分批并发处理
-        for batch_start in range(0, total, BATCH_SIZE):
-            batch = episodes[batch_start:batch_start + BATCH_SIZE]
-
-            with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-                futures = {executor.submit(_sync_ep, ep): ep for ep in batch}
-                results = []
-                for future in as_completed(futures):
-                    results.append(future.result())
-
-            # 按集数排序后逐个汇报
-            results.sort(key=lambda x: x[0])
-            for ep_num, count in results:
+        # 一次性提交全部集数，max_workers 控制并发，每完成一集立即推送
+        with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+            futures = {executor.submit(_sync_ep, ep): ep for ep in episodes}
+            for future in as_completed(futures):
+                ep_num, count = future.result()
                 done_count += 1
                 if count > 0:
                     synced += 1
