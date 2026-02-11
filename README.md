@@ -42,20 +42,36 @@
 
 ### 方式一：Docker 部署（推荐）
 
-**1. 克隆项目**
+镜像已通过 GitHub Actions 自动构建并发布到 GHCR，支持 `linux/amd64` 和 `linux/arm64` 架构。
+
+#### 使用 Docker Run
 
 ```bash
-git clone <repository-url>
-cd zhuimange
+# 拉取镜像
+docker pull ghcr.io/lwhx/zhuimange:latest
+
+# 启动容器
+docker run -d \
+  --name zhuimange \
+  --restart unless-stopped \
+  -p 8280:8000 \
+  -v $(pwd)/data:/app/data \
+  -e TMDB_API_KEY=your_tmdb_api_key_here \
+  -e INVIDIOUS_URL=https://invidious.snopyta.org \
+  -e DATABASE_PATH=/app/data/tracker.db \
+  -e TZ=Asia/Shanghai \
+  ghcr.io/lwhx/zhuimange:latest
 ```
 
-**2. 配置环境变量**
+#### 使用 Docker Compose（推荐）
+
+**1. 创建项目目录**
 
 ```bash
-cp .env.example .env
+mkdir zhuimange && cd zhuimange
 ```
 
-编辑 `.env` 文件，填写必要配置：
+**2. 创建 `.env` 文件**
 
 ```env
 # 必需 - TMDB API 密钥 (https://www.themoviedb.org/settings/api)
@@ -65,18 +81,36 @@ TMDB_API_KEY=your_tmdb_api_key_here
 INVIDIOUS_URL=https://invidious.snopyta.org
 
 # 可选
-DATABASE_PATH=./data/tracker.db
 TZ=Asia/Shanghai
 LOG_LEVEL=INFO
 ```
 
-**3. 构建并启动**
+**3. 创建 `docker-compose.yml`**
 
-```bash
-docker-compose up -d --build
+```yaml
+services:
+  zhuimange:
+    image: ghcr.io/lwhx/zhuimange:latest
+    container_name: zhuimange
+    restart: unless-stopped
+    ports:
+      - "8280:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/tracker.db
+      - TZ=Asia/Shanghai
 ```
 
-**4. 访问应用**
+**4. 启动服务**
+
+```bash
+docker compose up -d
+```
+
+**5. 访问应用**
 
 打开浏览器访问 `http://localhost:8280`
 
@@ -213,7 +247,7 @@ zhuimange/
 ### 查看日志
 
 ```bash
-docker-compose logs -f zhuimange
+docker compose logs -f zhuimange
 ```
 
 ### 数据库备份
@@ -226,9 +260,8 @@ sqlite3 data/tracker.db ".backup data/backup-$(date +%Y%m%d).db"
 ### 版本升级
 
 ```bash
-git pull origin main
-docker-compose down
-docker-compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ---
