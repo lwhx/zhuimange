@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   zhuimange:
-    build: .
+    image: ghcr.io/lwhx/zhuimange:latest
     container_name: zhuimange
     restart: unless-stopped
     ports:

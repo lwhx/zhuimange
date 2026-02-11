@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*.egg-info
+.venv
+venv
+env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Project files
+.env
+*.md
+LICENSE
+data/
+docker-compose*.yml
+.dockerignore
+Dockerfile
+.github/
