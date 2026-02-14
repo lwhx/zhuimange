@@ -286,15 +286,59 @@ def sync_anime_stream(anime_id):
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     def generate():
-        from app.core.source_finder import find_sources_for_episode, discover_latest_episode
+        from app.core.source_finder import find_sources_for_episode
+        from app.core.matcher.preprocessor import extract_episode_number
+        from app.core.invidious_client import invidious_client
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         try:
-            # 手动动漫先探测集数
             is_manual = anime.get("tmdb_id") is None
-            if is_manual:
-                discover_latest_episode(anime_id)
 
+            # ===== 阶段 1: 手动动漫实时探测集数 =====
+            if is_manual:
+                yield f"data: {_json.dumps({'type': 'discovering', 'message': '正在探测集数...'}, ensure_ascii=False)}\n\n"
+
+                title = anime.get("title_cn", "")
+                aliases_list = db.get_aliases(anime_id)
+                search_terms = [title] + aliases_list[:3]
+                max_ep = 0
+
+                for term in search_terms:
+                    if not term:
+                        continue
+                    try:
+                        videos = invidious_client.search_videos(term, max_results=50)
+                        for video in videos:
+                            ep = extract_episode_number(video.get("title", ""))
+                            if ep is not None and ep > max_ep:
+                                max_ep = ep
+                    except Exception as e:
+                        logger.error(f"探测集数搜索失败: {term} - {e}")
+
+                if max_ep > 0:
+                    # 创建缺少的集数记录
+                    existing_episodes = db.get_episodes(anime_id)
+                    existing_nums = {ep["absolute_num"] for ep in existing_episodes}
+
+                    new_episodes = []
+                    for i in range(1, max_ep + 1):
+                        if i not in existing_nums:
+                            new_episodes.append({
+                                "absolute_num": i,
+                                "episode_number": i,
+                                "season_number": 1,
+                            })
+
+                    if new_episodes:
+                        db.add_episodes(anime_id, new_episodes)
+                        db.update_anime(anime_id, {"total_episodes": max_ep})
+                        logger.info(f"自动创建 {len(new_episodes)} 个集数记录")
+
+                    # 推送 discover 事件，前端实时创建集数 DOM
+                    new_ep_nums = [ep["absolute_num"] for ep in new_episodes]
+                    yield f"data: {_json.dumps({'type': 'discover', 'new_episodes': new_ep_nums, 'total': max_ep}, ensure_ascii=False)}\n\n"
+
+            # ===== 阶段 2: 同步视频源 =====
             episodes = db.get_episodes(anime_id)
             episodes.reverse()  # 从最新集开始同步
             total = len(episodes)
@@ -304,7 +348,8 @@ def sync_anime_stream(anime_id):
             synced = 0
             total_sources = 0
             done_count = 0
-            BATCH_SIZE = 4  # 每批并发 4 集
+            first_video_id = None
+            BATCH_SIZE = 4
 
             def _sync_ep(ep):
                 ep_num = ep["absolute_num"]
@@ -315,7 +360,6 @@ def sync_anime_stream(anime_id):
                     logger.error(f"同步失败: {anime['title_cn']} 第{ep_num}集 - {e}")
                     return ep_num, 0
 
-            # 一次性提交全部集数，max_workers 控制并发，每完成一集立即推送
             with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
                 futures = {executor.submit(_sync_ep, ep): ep for ep in episodes}
                 for future in as_completed(futures):
@@ -324,22 +368,28 @@ def sync_anime_stream(anime_id):
                     if count > 0:
                         synced += 1
                         total_sources += count
+                        # 记录第一个有源的视频 ID（用于封面）
+                        if first_video_id is None:
+                            ep_obj = next((e for e in episodes if e["absolute_num"] == ep_num), None)
+                            if ep_obj:
+                                srcs = db.get_sources_for_episode(ep_obj.get("id", 0))
+                                if srcs:
+                                    first_video_id = srcs[0].get("video_id", "")
                     yield f"data: {_json.dumps({'type': 'episode', 'current': done_count, 'total': total, 'ep_num': ep_num, 'source_count': count}, ensure_ascii=False)}\n\n"
 
-            # 更新最后同步时间
+            # ===== 阶段 3: 封面和收尾 =====
             db.touch_anime_sync(anime_id)
 
-            # 手动动漫无封面兜底
+            # 手动动漫自动设置封面（高清缩略图）
+            poster_url = None
             if is_manual:
                 a = db.get_anime(anime_id)
-                if not a.get("poster_url"):
-                    for ep in episodes:
-                        srcs = db.get_sources_for_episode(ep.get("id", 0))
-                        if srcs:
-                            vid = srcs[0].get("video_id", "")
-                            if vid:
-                                db.update_anime(anime_id, {"poster_url": f"https://img.youtube.com/vi/{vid}/0.jpg"})
-                                break
+                if not a.get("poster_url") and first_video_id:
+                    poster_url = f"https://img.youtube.com/vi/{first_video_id}/hqdefault.jpg"
+                    db.update_anime(anime_id, {"poster_url": poster_url})
+                    logger.info(f"自动设置封面(高清缩略图): {poster_url}")
+                    # 推送封面更新事件
+                    yield f"data: {_json.dumps({'type': 'poster', 'poster_url': poster_url}, ensure_ascii=False)}\n\n"
 
             db.add_sync_log(
                 anime_id=anime_id, sync_type="manual",

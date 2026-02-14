@@ -347,7 +347,7 @@ def sync_anime_sources(anime_id: int) -> dict:
             if sources:
                 best_vid = sources[0].get("video_id", "")
                 if best_vid:
-                    thumb_url = f"https://img.youtube.com/vi/{best_vid}/0.jpg"
+                    thumb_url = f"https://img.youtube.com/vi/{best_vid}/hqdefault.jpg"
                     db.update_anime(anime_id, {"poster_url": thumb_url})
                     logger.info(f"自动设置封面(视频缩略图): {thumb_url}")
                     break

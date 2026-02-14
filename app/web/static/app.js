@@ -517,9 +517,23 @@ function syncAnime(animeId) {
     es.onmessage = function (event) {
         const data = JSON.parse(event.data);
 
-        if (data.type === 'start') {
+        // 阶段 1: 探测集数状态
+        if (data.type === 'discovering') {
+            progressText.textContent = '🔍 探测集数中...';
+        }
+        // 阶段 1 完成: 新集数发现，动态创建 DOM
+        else if (data.type === 'discover') {
+            if (data.new_episodes && data.new_episodes.length > 0) {
+                _insertNewEpisodes(animeId, data.new_episodes);
+                ToastManager.success(`探测到 ${data.total} 集`);
+            }
+            progressText.textContent = `探测到 ${data.total} 集`;
+        }
+        // 阶段 2 开始
+        else if (data.type === 'start') {
             progressText.textContent = `0/${data.total}`;
         }
+        // 阶段 2: 逐集同步
         else if (data.type === 'episode') {
             const pct = Math.round(data.current / data.total * 100);
             progressFill.style.width = pct + '%';
@@ -530,7 +544,6 @@ function syncAnime(animeId) {
             if (epItem) {
                 const dateDiv = epItem.querySelector('.episode-item__date');
                 if (dateDiv && data.source_count > 0) {
-                    // 更新或追加源数量
                     const existing = dateDiv.textContent;
                     const srcText = `${data.source_count} 个视频源`;
                     if (existing.includes('个视频源')) {
@@ -541,6 +554,16 @@ function syncAnime(animeId) {
                 }
             }
         }
+        // 封面更新
+        else if (data.type === 'poster') {
+            const posterContainer = document.querySelector('.anime-detail__poster');
+            if (posterContainer && data.poster_url) {
+                posterContainer.innerHTML = `<img src="${data.poster_url}" alt="封面" style="opacity:0;transition:opacity 0.5s;">`;
+                const img = posterContainer.querySelector('img');
+                img.onload = () => { img.style.opacity = '1'; };
+            }
+        }
+        // 同步完成
         else if (data.type === 'done') {
             es.close();
             progressFill.style.width = '100%';
@@ -554,6 +577,14 @@ function syncAnime(animeId) {
                 progressDiv.style.display = 'none';
             }, 2000);
         }
+        // 错误
+        else if (data.type === 'error') {
+            es.close();
+            btn.disabled = false;
+            btn.textContent = '🔄 同步视频源';
+            progressDiv.style.display = 'none';
+            ToastManager.error(data.message || '同步失败');
+        }
     };
 
     es.onerror = function () {
@@ -563,6 +594,86 @@ function syncAnime(animeId) {
         progressDiv.style.display = 'none';
         ToastManager.error('同步连接中断');
     };
+}
+
+/**
+ * 动态插入新发现的集数到集数列表
+ */
+function _insertNewEpisodes(animeId, epNums) {
+    // 移除空状态提示
+    const emptyState = document.querySelector('.episodes-section .empty-state');
+    if (emptyState) {
+        emptyState.remove();
+    }
+
+    // 确保 episodes-grid 容器存在
+    let grid = document.querySelector('.episodes-grid');
+    if (!grid) {
+        const section = document.querySelector('.episodes-section');
+        if (section) {
+            grid = document.createElement('div');
+            grid.className = 'episodes-grid';
+            section.appendChild(grid);
+        } else {
+            return;
+        }
+    }
+
+    // 收集已存在的集数
+    const existingNums = new Set();
+    grid.querySelectorAll('.episode-item').forEach(el => {
+        existingNums.add(parseInt(el.dataset.ep));
+    });
+
+    // 排序后插入
+    epNums.sort((a, b) => a - b);
+    for (const epNum of epNums) {
+        if (existingNums.has(epNum)) continue;
+
+        const item = document.createElement('div');
+        item.className = 'episode-item';
+        item.dataset.ep = epNum;
+        item.innerHTML = `
+            <div class="episode-item__num">${epNum}</div>
+            <div class="episode-item__info">
+                <div class="episode-item__title">第${epNum}集</div>
+                <div class="episode-item__date"></div>
+            </div>
+            <div class="episode-item__actions">
+                <button class="btn btn--sm btn--secondary" onclick="openSourcesModal(${animeId}, ${epNum})" title="查看视频源">🎬</button>
+                <button class="btn btn--sm btn--success" onclick="markWatched(${animeId}, ${epNum})" title="标记已看">✓</button>
+                <button class="btn btn--sm btn--secondary" onclick="markUnwatched(${animeId}, ${epNum})" title="标记未看" style="display:none;">↩️</button>
+            </div>
+        `;
+
+        // 按集数顺序插入到正确位置
+        let inserted = false;
+        const items = grid.querySelectorAll('.episode-item');
+        for (const existing of items) {
+            if (parseInt(existing.dataset.ep) > epNum) {
+                grid.insertBefore(item, existing);
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted) {
+            grid.appendChild(item);
+        }
+    }
+
+    // 更新进度文字和集数统计
+    const totalEps = grid.querySelectorAll('.episode-item').length;
+    const metaItem = document.querySelector('.anime-detail__meta-item span strong');
+    if (metaItem) {
+        // 更新 "N 集" 数字
+        const metaItems = document.querySelectorAll('.anime-detail__meta-item');
+        metaItems.forEach(mi => {
+            if (mi.textContent.includes('集') && !mi.textContent.includes('已看')) {
+                const strong = mi.querySelector('strong');
+                if (strong) strong.textContent = totalEps;
+            }
+        });
+    }
 }
 
 // ==================== 删除动漫 ====================
