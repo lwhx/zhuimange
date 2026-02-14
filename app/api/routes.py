@@ -25,7 +25,7 @@ def search_anime():
         return error_response("请输入搜索关键词")
 
     results = tmdb_client.search_anime(query)
-    return success_response(results, message="搜索成功")
+    return jsonify(results)
 
 
 # ==================== 动漫管理 ====================
