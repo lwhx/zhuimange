@@ -259,65 +259,69 @@ def sync_anime_stream(anime_id):
         from app.core.source_finder import find_sources_for_episode, discover_latest_episode
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # 手动动漫先探测集数
-        is_manual = anime.get("tmdb_id") is None
-        if is_manual:
-            discover_latest_episode(anime_id)
+        try:
+            # 手动动漫先探测集数
+            is_manual = anime.get("tmdb_id") is None
+            if is_manual:
+                discover_latest_episode(anime_id)
 
-        episodes = db.get_episodes(anime_id)
-        episodes.reverse()  # 从最新集开始同步
-        total = len(episodes)
+            episodes = db.get_episodes(anime_id)
+            episodes.reverse()  # 从最新集开始同步
+            total = len(episodes)
 
-        yield f"data: {_json.dumps({'type': 'start', 'total': total}, ensure_ascii=False)}\n\n"
+            yield f"data: {_json.dumps({'type': 'start', 'total': total}, ensure_ascii=False)}\n\n"
 
-        synced = 0
-        total_sources = 0
-        done_count = 0
-        BATCH_SIZE = 4  # 每批并发 4 集
+            synced = 0
+            total_sources = 0
+            done_count = 0
+            BATCH_SIZE = 4  # 每批并发 4 集
 
-        def _sync_ep(ep):
-            ep_num = ep["absolute_num"]
-            try:
-                sources = find_sources_for_episode(anime_id, ep_num, force=True)
-                return ep_num, len(sources) if sources else 0
-            except Exception as e:
-                logger.error(f"同步失败: {anime['title_cn']} 第{ep_num}集 - {e}")
-                return ep_num, 0
+            def _sync_ep(ep):
+                ep_num = ep["absolute_num"]
+                try:
+                    sources = find_sources_for_episode(anime_id, ep_num, force=True)
+                    return ep_num, len(sources) if sources else 0
+                except Exception as e:
+                    logger.error(f"同步失败: {anime['title_cn']} 第{ep_num}集 - {e}")
+                    return ep_num, 0
 
-        # 一次性提交全部集数，max_workers 控制并发，每完成一集立即推送
-        with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-            futures = {executor.submit(_sync_ep, ep): ep for ep in episodes}
-            for future in as_completed(futures):
-                ep_num, count = future.result()
-                done_count += 1
-                if count > 0:
-                    synced += 1
-                    total_sources += count
-                yield f"data: {_json.dumps({'type': 'episode', 'current': done_count, 'total': total, 'ep_num': ep_num, 'source_count': count}, ensure_ascii=False)}\n\n"
+            # 一次性提交全部集数，max_workers 控制并发，每完成一集立即推送
+            with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+                futures = {executor.submit(_sync_ep, ep): ep for ep in episodes}
+                for future in as_completed(futures):
+                    ep_num, count = future.result()
+                    done_count += 1
+                    if count > 0:
+                        synced += 1
+                        total_sources += count
+                    yield f"data: {_json.dumps({'type': 'episode', 'current': done_count, 'total': total, 'ep_num': ep_num, 'source_count': count}, ensure_ascii=False)}\n\n"
 
-        # 更新最后同步时间
-        db.update_anime(anime_id, {"last_sync_at": "CURRENT_TIMESTAMP"})
+            # 更新最后同步时间
+            db.touch_anime_sync(anime_id)
 
-        # 手动动漫无封面兜底
-        if is_manual:
-            a = db.get_anime(anime_id)
-            if not a.get("poster_url"):
-                for ep in episodes:
-                    srcs = db.get_sources_for_episode(ep.get("id", 0))
-                    if srcs:
-                        vid = srcs[0].get("video_id", "")
-                        if vid:
-                            db.update_anime(anime_id, {"poster_url": f"https://img.youtube.com/vi/{vid}/0.jpg"})
-                            break
+            # 手动动漫无封面兜底
+            if is_manual:
+                a = db.get_anime(anime_id)
+                if not a.get("poster_url"):
+                    for ep in episodes:
+                        srcs = db.get_sources_for_episode(ep.get("id", 0))
+                        if srcs:
+                            vid = srcs[0].get("video_id", "")
+                            if vid:
+                                db.update_anime(anime_id, {"poster_url": f"https://img.youtube.com/vi/{vid}/0.jpg"})
+                                break
 
-        db.add_sync_log(
-            anime_id=anime_id, sync_type="manual",
-            episodes_synced=synced, sources_found=total_sources,
-            status="success",
-            message=f"同步完成: {synced}/{total} 集找到视频源"
-        )
+            db.add_sync_log(
+                anime_id=anime_id, sync_type="manual",
+                episodes_synced=synced, sources_found=total_sources,
+                status="success",
+                message=f"同步完成: {synced}/{total} 集找到视频源"
+            )
 
-        yield f"data: {_json.dumps({'type': 'done', 'synced': synced, 'total_sources': total_sources}, ensure_ascii=False)}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'synced': synced, 'total_sources': total_sources}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.exception(f"同步流发生错误: {e}")
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
 
     return Response(
         stream_with_context(generate()),

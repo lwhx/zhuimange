@@ -275,6 +275,15 @@ def update_anime(anime_id: int, data: dict):
         )
 
 
+def touch_anime_sync(anime_id: int):
+    """更新动漫最后同步时间"""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE animes SET last_sync_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (anime_id,)
+        )
+
+
 def delete_anime(anime_id: int):
     """删除动漫及其关联数据"""
     with get_connection() as conn:
