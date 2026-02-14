@@ -32,6 +32,7 @@ DEVELOPMENT.md
 # Project files
 .env
 data/
+logs/
 docker-compose*.yml
 .dockerignore
 .github/
