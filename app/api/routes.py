@@ -9,7 +9,6 @@ from app.core.tmdb_client import tmdb_client
 from app.core.source_finder import find_sources_for_episode, sync_anime_sources
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
 from app.core.response import success_response, error_response
-from app.main import cache
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,10 @@ api = Blueprint('api', __name__, url_prefix='/api')
 def _clear_index_cache():
     """清除首页缓存，使数据变更立即生效"""
     try:
-        cache.delete('index_page')
+        from flask import current_app
+        cache = current_app.extensions.get('cache')
+        if cache:
+            cache.delete('index_page')
     except Exception:
         pass
 
