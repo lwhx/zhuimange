@@ -358,13 +358,13 @@ def mark_episode_watched(anime_id: int, ep_num: int, watched: bool = True):
             "UPDATE episodes SET watched = ? WHERE anime_id = ? AND absolute_num = ?",
             (1 if watched else 0, anime_id, ep_num)
         )
-        if watched:
-            conn.execute(
-                """UPDATE animes SET watched_ep = (
-                    SELECT COUNT(*) FROM episodes WHERE anime_id = ? AND watched = 1
-                ), updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                (anime_id, anime_id)
-            )
+        # 无论标记已看还是未看，都更新 watched_ep 计数
+        conn.execute(
+            """UPDATE animes SET watched_ep = (
+                SELECT COUNT(*) FROM episodes WHERE anime_id = ? AND watched = 1
+            ), updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (anime_id, anime_id)
+        )
 
 
 # ==================== 视频源 CRUD ====================
@@ -526,7 +526,8 @@ def cleanup_old_sync_logs(days: int = 90):
     """清理过期同步日志"""
     with get_connection() as conn:
         conn.execute(
-            f"DELETE FROM sync_logs WHERE created_at < datetime('now', '-{days} days')"
+            "DELETE FROM sync_logs WHERE created_at < datetime('now', ?)",
+            (f'-{int(days)} days',)
         )
 
 
@@ -788,6 +789,7 @@ def cleanup_old_backup_logs(days: int = 180) -> int:
     """
     with get_connection() as conn:
         cursor = conn.execute(
-            f"DELETE FROM backup_logs WHERE created_at < datetime('now', '-{days} days')"
+            "DELETE FROM backup_logs WHERE created_at < datetime('now', ?)",
+            (f'-{int(days)} days',)
         )
         return cursor.rowcount

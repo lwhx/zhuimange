@@ -122,12 +122,6 @@ def _register_middlewares(app: Flask):
                     abort(401)
                 return redirect(url_for('login'))
 
-    @app.errorhandler(404)
-    def handle_404(e):
-        if request.path.startswith('/api/'):
-            return jsonify({'success': False, 'error': '资源不存在', 'code': 404}), 404
-        return render_template('error.html', error='页面不存在', code=404), 404
-
     @app.before_request
     def start_scheduler_once():
         if not hasattr(app, '_scheduler_started'):

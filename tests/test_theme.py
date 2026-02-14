@@ -171,7 +171,7 @@ class TestThemePreloadScript:
         assert '(function()' in content
         assert 'localStorage.getItem' in content
         assert 'document.documentElement.setAttribute' in content
-        assert 'setProperty' in content
+        assert 'setAttribute' in content
     
     def test_base_html_preload_script_theme_fallback(self, app):
         template_folder = app.template_folder

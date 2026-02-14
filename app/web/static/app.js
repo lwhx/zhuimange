@@ -476,9 +476,11 @@ function closeSourcesModal() {
 }
 
 async function findSources(animeId, epNum, force = false) {
-    const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '搜索中...';
+    const btn = document.querySelector(`[data-ep="${epNum}"] .btn[onclick*="findSources"]`) || event?.target;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '搜索中...';
+    }
 
     try {
         await apiRequest(`/api/anime/${animeId}/episode/${epNum}/find_sources`, {
@@ -489,8 +491,10 @@ async function findSources(animeId, epNum, force = false) {
         // 重新打开模态框以刷新结果
         openSourcesModal(animeId, epNum);
     } catch (err) {
-        btn.disabled = false;
-        btn.textContent = '搜索视频源';
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '搜索视频源';
+        }
     }
 }
 
@@ -719,15 +723,24 @@ async function importBackup(input) {
     const formData = new FormData();
     formData.append('file', file);
 
+    // 获取 CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]');
+    const headers = {};
+    if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken.getAttribute('content');
+    }
+
     try {
         const resp = await fetch('/api/backup/import', {
             method: 'POST',
+            headers,
             body: formData,
         });
         const data = await resp.json();
         if (data.success) {
+            const stats = data.data || {};
             ToastManager.success(
-                `导入完成: ${data.animes_imported} 部动漫, ${data.episodes_imported} 集, ${data.sources_imported} 个源`
+                `导入完成: ${stats.animes_imported || 0} 部动漫, ${stats.episodes_imported || 0} 集, ${stats.sources_imported || 0} 个源`
             );
             setTimeout(() => location.reload(), 1500);
         } else {
@@ -748,7 +761,7 @@ async function telegramBackup() {
         const data = await apiRequest('/api/backup/telegram', {
             method: 'POST',
         });
-        ToastManager.success(`备份已发送到 Telegram: ${data.filename}`);
+        ToastManager.success(`备份已发送到 Telegram: ${data.data?.filename || '成功'}`);
     } catch (err) {
         // handled by apiRequest
     }

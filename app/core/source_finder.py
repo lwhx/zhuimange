@@ -215,8 +215,9 @@ def find_sources_for_episode(
             "published_at": video.get("published_at", ""),
             "match_score": video["match_score"],
         })
-        saved_source = db.get_sources_for_episode(episode["id"])
-        saved_sources = saved_source
+
+    # 循环结束后统一查询一次
+    saved_sources = db.get_sources_for_episode(episode["id"])
 
     logger.info(
         f"保存 {len(scored_videos[:10])} 个视频源: "
@@ -335,7 +336,7 @@ def sync_anime_sources(anime_id: int) -> dict:
                     total_sources += len(sources)
 
     # 更新最后同步时间
-    db.update_anime(anime_id, {"last_sync_at": "CURRENT_TIMESTAMP"})
+    db.touch_anime_sync(anime_id)
 
     # 手动动漫无封面时，尝试用视频缩略图作为封面
     anime = db.get_anime(anime_id)  # 重新读取

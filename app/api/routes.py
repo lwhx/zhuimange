@@ -9,10 +9,19 @@ from app.core.tmdb_client import tmdb_client
 from app.core.source_finder import find_sources_for_episode, sync_anime_sources
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
 from app.core.response import success_response, error_response
+from app.main import cache
 
 logger = logging.getLogger(__name__)
 
 api = Blueprint('api', __name__, url_prefix='/api')
+
+
+def _clear_index_cache():
+    """清除首页缓存，使数据变更立即生效"""
+    try:
+        cache.delete('index_page')
+    except Exception:
+        pass
 
 
 # ==================== 健康检查 ====================
@@ -73,6 +82,7 @@ def add_anime():
     return success_response({"anime_id": anime_id}, message="动漫添加成功")
 
 
+
 @api.route('/anime/add_manual', methods=['POST'])
 def add_anime_manual():
     """手动添加动漫"""
@@ -118,6 +128,7 @@ def add_anime_manual():
         if alias.strip():
             db.add_alias(anime_id, alias.strip())
 
+    _clear_index_cache()
     return success_response({"anime_id": anime_id}, message="手动添加动漫成功")
 
 
@@ -128,6 +139,7 @@ def delete_anime(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
     db.delete_anime(anime_id)
+    _clear_index_cache()
     return success_response(message="动漫删除成功")
 
 
@@ -177,6 +189,7 @@ def mark_watched(anime_id, ep_num):
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     db.mark_episode_watched(anime_id, ep_num, True)
+    _clear_index_cache()
     return success_response(message="标记已看成功")
 
 
@@ -188,6 +201,7 @@ def mark_unwatched(anime_id, ep_num):
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     db.mark_episode_watched(anime_id, ep_num, False)
+    _clear_index_cache()
     return success_response(message="标记未看成功")
 
 
@@ -212,6 +226,7 @@ def update_progress(anime_id):
             db.mark_episode_watched(anime_id, ep["absolute_num"], False)
 
     db.update_anime(anime_id, {"watched_ep": watched_ep})
+    _clear_index_cache()
     return success_response(message="更新观看进度成功")
 
 
