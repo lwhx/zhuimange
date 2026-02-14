@@ -1,0 +1,419 @@
+/* ==================== 追漫阁 - 主题配色系统 ==================== */
+
+/*
+    配色方案说明：
+    1. neon-purple - 霓虹紫（延续现有风格，未来科技感）
+    2. ocean-blue - 海洋蓝（清新专业，适合数据展示）
+    3. sunset-orange - 日落橙（温暖活力，适合内容消费）
+    4. emerald-green - 翡翠绿（自然护眼，适合长时间使用）
+    5. sakura-pink - 樱花粉（温柔优雅，适合动漫主题）
+
+    配色法则：60-30-10 法则
+    - 60% 中性色（背景、容器）
+    - 30% 主色（辅助元素）
+    - 10% 强调色（关键交互）
+
+    可访问性标准：
+    - 文本对比度：至少 4.5:1（AA标准）
+    - 大文本对比度：至少 3:1（AA标准）
+    - 交互元素对比度：至少 3:1（AA标准）
+*/
+
+/* ==================== 主题1: 霓虹紫 ==================== */
+:root[data-theme="neon-purple"],
+:root[data-theme="neon-purple-dark"] {
+    --bg-primary: #0a0a12;
+    --bg-secondary: #12121f;
+    --bg-tertiary: #1a1a2e;
+    --bg-card: #16162a;
+    --bg-card-hover: #1e1e3a;
+    --bg-modal: #1a1a2e;
+    --bg-input: #1e1e35;
+    --bg-glass: rgba(22, 22, 42, 0.85);
+
+    --text-primary: #f0f0f8;
+    --text-secondary: #b0b0d0;
+    --text-muted: #7070a0;
+    --text-accent: #a78bfa;
+
+    --accent: #8b5cf6;
+    --accent-light: #a78bfa;
+    --accent-dark: #7c3aed;
+    --accent-glow: rgba(139, 92, 246, 0.4);
+
+    --success: #34d399;
+    --success-bg: rgba(52, 211, 153, 0.15);
+    --warning: #fbbf24;
+    --warning-bg: rgba(251, 191, 36, 0.15);
+    --danger: #f87171;
+    --danger-bg: rgba(248, 113, 113, 0.15);
+    --info: #60a5fa;
+    --info-bg: rgba(96, 165, 250, 0.15);
+
+    --gradient-primary: linear-gradient(135deg, #8b5cf6, #d8b4fe);
+    --gradient-card: linear-gradient(145deg, #1e1e3a, #16162a);
+    --gradient-hero: linear-gradient(180deg, rgba(139, 92, 246, 0.1) 0%, transparent 60%);
+
+    --border-color: rgba(139, 92, 246, 0.2);
+    --border-hover: rgba(139, 92, 246, 0.4);
+}
+
+:root[data-theme="neon-purple-light"] {
+    --bg-primary: #f8f9fc;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f0f2f8;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f5f6ff;
+    --bg-modal: #ffffff;
+    --bg-input: #f0f2f8;
+    --bg-glass: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a5568;
+    --text-muted: #718096;
+    --text-accent: #7c3aed;
+
+    --accent: #8b5cf6;
+    --accent-light: #a78bfa;
+    --accent-dark: #7c3aed;
+    --accent-glow: rgba(139, 92, 246, 0.25);
+
+    --success: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.1);
+
+    --gradient-primary: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    --gradient-card: linear-gradient(145deg, #ffffff, #f5f6ff);
+    --gradient-hero: linear-gradient(180deg, rgba(139, 92, 246, 0.06) 0%, transparent 60%);
+
+    --border-color: rgba(139, 92, 246, 0.15);
+    --border-hover: rgba(139, 92, 246, 0.3);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* ==================== 主题2: 海洋蓝 ==================== */
+:root[data-theme="ocean-blue"],
+:root[data-theme="ocean-blue-dark"] {
+    --bg-primary: #0a1628;
+    --bg-secondary: #0f1f35;
+    --bg-tertiary: #1a2a45;
+    --bg-card: #0f1f35;
+    --bg-card-hover: #1a2a45;
+    --bg-modal: #152540;
+    --bg-input: #1a2a45;
+    --bg-glass: rgba(15, 31, 53, 0.85);
+
+    --text-primary: #f0f8ff;
+    --text-secondary: #a8c8e8;
+    --text-muted: #5a7898;
+    --text-accent: #38bdf8;
+
+    --accent: #0ea5e9;
+    --accent-light: #38bdf8;
+    --accent-dark: #0284c7;
+    --accent-glow: rgba(14, 165, 233, 0.35);
+
+    --success: #2dd4bf;
+    --success-bg: rgba(45, 212, 191, 0.12);
+    --warning: #fbbf24;
+    --warning-bg: rgba(251, 191, 36, 0.12);
+    --danger: #fb7185;
+    --danger-bg: rgba(251, 113, 133, 0.12);
+    --info: #818cf8;
+    --info-bg: rgba(129, 140, 248, 0.12);
+
+    --gradient-primary: linear-gradient(135deg, #0ea5e9, #38bdf8);
+    --gradient-card: linear-gradient(145deg, #152540, #0f1f35);
+    --gradient-hero: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, transparent 60%);
+
+    --border-color: rgba(14, 165, 233, 0.18);
+    --border-hover: rgba(14, 165, 233, 0.38);
+}
+
+:root[data-theme="ocean-blue-light"] {
+    --bg-primary: #f0f7ff;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e8f2ff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f5f9ff;
+    --bg-modal: #ffffff;
+    --bg-input: #e8f2ff;
+    --bg-glass: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #0a1628;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --text-accent: #0284c7;
+
+    --accent: #0ea5e9;
+    --accent-light: #38bdf8;
+    --accent-dark: #0284c7;
+    --accent-glow: rgba(14, 165, 233, 0.2);
+
+    --success: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.1);
+
+    --gradient-primary: linear-gradient(135deg, #0ea5e9, #38bdf8);
+    --gradient-card: linear-gradient(145deg, #ffffff, #f5f9ff);
+    --gradient-hero: linear-gradient(180deg, rgba(14, 165, 233, 0.05) 0%, transparent 60%);
+
+    --border-color: rgba(14, 165, 233, 0.12);
+    --border-hover: rgba(14, 165, 233, 0.25);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* ==================== 主题3: 日落橙 ==================== */
+:root[data-theme="sunset-orange"],
+:root[data-theme="sunset-orange-dark"] {
+    --bg-primary: #1a0f0a;
+    --bg-secondary: #251a12;
+    --bg-tertiary: #30201a;
+    --bg-card: #251a12;
+    --bg-card-hover: #30201a;
+    --bg-modal: #2a1f15;
+    --bg-input: #30201a;
+    --bg-glass: rgba(37, 26, 18, 0.85);
+
+    --text-primary: #fff8f0;
+    --text-secondary: #d4c4b0;
+    --text-muted: #8a7a68;
+    --text-accent: #fb923c;
+
+    --accent: #f97316;
+    --accent-light: #fb923c;
+    --accent-dark: #ea580c;
+    --accent-glow: rgba(249, 115, 22, 0.35);
+
+    --success: #34d399;
+    --success-bg: rgba(52, 211, 153, 0.12);
+    --warning: #fcd34d;
+    --warning-bg: rgba(252, 211, 77, 0.12);
+    --danger: #fb7185;
+    --danger-bg: rgba(251, 113, 133, 0.12);
+    --info: #60a5fa;
+    --info-bg: rgba(96, 165, 250, 0.12);
+
+    --gradient-primary: linear-gradient(135deg, #f97316, #fb923c);
+    --gradient-card: linear-gradient(145deg, #2a1f15, #251a12);
+    --gradient-hero: linear-gradient(180deg, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
+
+    --border-color: rgba(249, 115, 22, 0.18);
+    --border-hover: rgba(249, 115, 22, 0.38);
+}
+
+:root[data-theme="sunset-orange-light"] {
+    --bg-primary: #fff8f0;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #fef5eb;
+    --bg-card: #ffffff;
+    --bg-card-hover: #fffbf5;
+    --bg-modal: #ffffff;
+    --bg-input: #fef5eb;
+    --bg-glass: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #1a0f0a;
+    --text-secondary: #5a4a3a;
+    --text-muted: #7a6a58;
+    --text-accent: #ea580c;
+
+    --accent: #f97316;
+    --accent-light: #fb923c;
+    --accent-dark: #ea580c;
+    --accent-glow: rgba(249, 115, 22, 0.2);
+
+    --success: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.1);
+
+    --gradient-primary: linear-gradient(135deg, #f97316, #fb923c);
+    --gradient-card: linear-gradient(145deg, #ffffff, #fffbf5);
+    --gradient-hero: linear-gradient(180deg, rgba(249, 115, 22, 0.05) 0%, transparent 60%);
+
+    --border-color: rgba(249, 115, 22, 0.12);
+    --border-hover: rgba(249, 115, 22, 0.25);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* ==================== 主题4: 翡翠绿 ==================== */
+:root[data-theme="emerald-green"] {
+    --bg-primary: #0a1a15;
+    --bg-secondary: #0f251f;
+    --bg-tertiary: #1a3028;
+    --bg-card: #0f251f;
+    --bg-card-hover: #1a3028;
+    --bg-modal: #152822;
+    --bg-input: #1a3028;
+    --bg-glass: rgba(15, 37, 31, 0.85);
+
+    --text-primary: #f0fff8;
+    --text-secondary: #a8d4c8;
+    --text-muted: #5a9888;
+    --text-accent: #2dd4bf;
+
+    --accent: #10b981;
+    --accent-light: #2dd4bf;
+    --accent-dark: #059669;
+    --accent-glow: rgba(16, 185, 129, 0.35);
+
+    --success: #34d399;
+    --success-bg: rgba(52, 211, 153, 0.12);
+    --warning: #fbbf24;
+    --warning-bg: rgba(251, 191, 36, 0.12);
+    --danger: #fb7185;
+    --danger-bg: rgba(251, 113, 133, 0.12);
+    --info: #60a5fa;
+    --info-bg: rgba(96, 165, 250, 0.12);
+
+    --gradient-primary: linear-gradient(135deg, #10b981, #2dd4bf);
+    --gradient-card: linear-gradient(145deg, #152822, #0f251f);
+    --gradient-hero: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+
+    --border-color: rgba(16, 185, 129, 0.18);
+    --border-hover: rgba(16, 185, 129, 0.38);
+}
+
+:root[data-theme="emerald-green-light"] {
+    --bg-primary: #f0fff8;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e8fff5;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f5fff9;
+    --bg-modal: #ffffff;
+    --bg-input: #e8fff5;
+    --bg-glass: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #0a1a15;
+    --text-secondary: #4a5a54;
+    --text-muted: #6a7a68;
+    --text-accent: #059669;
+
+    --accent: #10b981;
+    --accent-light: #2dd4bf;
+    --accent-dark: #059669;
+    --accent-glow: rgba(16, 185, 129, 0.2);
+
+    --success: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.1);
+
+    --gradient-primary: linear-gradient(135deg, #10b981, #2dd4bf);
+    --gradient-card: linear-gradient(145deg, #ffffff, #f5fff9);
+    --gradient-hero: linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
+
+    --border-color: rgba(16, 185, 129, 0.12);
+    --border-hover: rgba(16, 185, 129, 0.25);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* ==================== 主题5: 樱花粉 ==================== */
+:root[data-theme="sakura-pink"],
+:root[data-theme="sakura-pink-dark"] {
+    --bg-primary: #1a0f18;
+    --bg-secondary: #251a22;
+    --bg-tertiary: #302530;
+    --bg-card: #251a22;
+    --bg-card-hover: #302530;
+    --bg-modal: #2a202a;
+    --bg-input: #302530;
+    --bg-glass: rgba(37, 26, 34, 0.85);
+
+    --text-primary: #fff8f8;
+    --text-secondary: #d4c4d0;
+    --text-muted: #8a7a88;
+    --text-accent: #f472b6;
+
+    --accent: #ec4899;
+    --accent-light: #f472b6;
+    --accent-dark: #db2777;
+    --accent-glow: rgba(236, 72, 153, 0.35);
+
+    --success: #34d399;
+    --success-bg: rgba(52, 211, 153, 0.12);
+    --warning: #fbbf24;
+    --warning-bg: rgba(251, 191, 36, 0.12);
+    --danger: #fb7185;
+    --danger-bg: rgba(251, 113, 133, 0.12);
+    --info: #818cf8;
+    --info-bg: rgba(129, 140, 248, 0.12);
+
+    --gradient-primary: linear-gradient(135deg, #ec4899, #f472b6);
+    --gradient-card: linear-gradient(145deg, #2a202a, #251a22);
+    --gradient-hero: linear-gradient(180deg, rgba(236, 72, 153, 0.08) 0%, transparent 60%);
+
+    --border-color: rgba(236, 72, 153, 0.18);
+    --border-hover: rgba(236, 72, 153, 0.38);
+}
+
+:root[data-theme="sakura-pink-light"] {
+    --bg-primary: #fff8f8;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #fef5f8;
+    --bg-card: #ffffff;
+    --bg-card-hover: #fffbfc;
+    --bg-modal: #ffffff;
+    --bg-input: #fef5f8;
+    --bg-glass: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #1a0f18;
+    --text-secondary: #5a4a58;
+    --text-muted: #7a6a78;
+    --text-accent: #db2777;
+
+    --accent: #ec4899;
+    --accent-light: #f472b6;
+    --accent-dark: #db2777;
+    --accent-glow: rgba(236, 72, 153, 0.2);
+
+    --success: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+    --info-bg: rgba(37, 99, 235, 0.1);
+
+    --gradient-primary: linear-gradient(135deg, #ec4899, #f472b6);
+    --gradient-card: linear-gradient(145deg, #ffffff, #fffbfc);
+    --gradient-hero: linear-gradient(180deg, rgba(236, 72, 153, 0.05) 0%, transparent 60%);
+
+    --border-color: rgba(236, 72, 153, 0.12);
+    --border-hover: rgba(236, 72, 153, 0.25);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}

@@ -32,9 +32,8 @@ def _get_search_keywords(anime: dict, episode_num: int) -> list[str]:
     title = anime.get("title_cn", "")
     aliases = db.get_aliases(anime["id"])
 
-    # 从全局别名库获取别名
-    from app.config import DONGHUA_ALIASES
-    global_aliases = DONGHUA_ALIASES.get(title, [])
+    # 从数据库全局别名库获取别名
+    global_aliases = db.get_global_aliases_by_title(title)
 
     all_names = [title] + aliases + global_aliases
     # 去重
@@ -139,8 +138,7 @@ def find_sources_for_episode(
 
     # 获取别名列表
     aliases = db.get_aliases(anime_id)
-    from app.config import DONGHUA_ALIASES
-    aliases.extend(DONGHUA_ALIASES.get(anime["title_cn"], []))
+    aliases.extend(db.get_global_aliases_by_title(anime["title_cn"]))
 
     # 搜索并收集所有结果
     all_videos = []
@@ -246,8 +244,7 @@ def discover_latest_episode(anime_id: int) -> int:
 
     title = anime.get("title_cn", "")
     aliases = db.get_aliases(anime_id)
-    from app.config import DONGHUA_ALIASES
-    aliases.extend(DONGHUA_ALIASES.get(title, []))
+    aliases.extend(db.get_global_aliases_by_title(title))
 
     # 搜索名称（不带集数）
     search_terms = [title] + aliases[:3]

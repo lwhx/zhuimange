@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="neon-purple-dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>追漫阁 - 配色方案预览</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            transition: background var(--transition-normal), color var(--transition-normal);
+        }
+
+        .preview-header {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .preview-header__title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .preview-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .theme-selector {
+            display: flex;
+            gap: 8px;
+        }
+
+        .theme-btn {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+            background: var(--bg-input);
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .theme-btn:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-hover);
+        }
+
+        .theme-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .theme-btn__color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-input);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+        }
+
+        .mode-btn {
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: var(--radius-xs);
+            transition: all var(--transition-fast);
+        }
+
+        .mode-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .mode-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .preview-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+
+        .page-preview {
+            margin-bottom: 48px;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .page-preview__header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-card-hover);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .page-preview__title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .page-preview__badge {
+            padding: 4px 12px;
+            background: var(--accent);
+            border-radius: var(--radius-full);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .page-preview__content {
+            padding: 24px;
+        }
+
+        .color-swatches {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .color-swatch {
+            padding: 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            background: var(--bg-input);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .color-swatch__preview {
+            height: 48px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .color-swatch__info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .color-swatch__name {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .color-swatch__hex {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+        }
+
+        .color-swatch__contrast {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .component-showcase {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .component-card {
+            padding: 20px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            background: var(--bg-input);
+        }
+
+        .component-card__title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--accent);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn--primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn--primary:hover {
+            background: var(--accent-light);
+            border-color: var(--accent-light);
+        }
+
+        .btn--secondary {
+            background: transparent;
+            color: var(--accent);
+        }
+
+        .btn--secondary:hover {
+            background: var(--accent-glow);
+        }
+
+        .btn--disabled {
+            background: var(--bg-card-hover);
+            border-color: var(--border-color);
+            color: var(--text-disabled);
+            cursor: not-allowed;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            transition: all var(--transition-fast);
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .status-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge--success {
+            background: var(--success-bg);
+            color: var(--success);
+        }
+
+        .badge--warning {
+            background: var(--warning-bg);
+            color: var(--warning);
+        }
+
+        .badge--error {
+            background: var(--error-bg);
+            color: var(--error);
+        }
+
+        .badge--info {
+            background: var(--info-bg);
+            color: var(--info);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            padding: 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            background: var(--bg-input);
+            text-align: center;
+        }
+
+        .stat-card__value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .stat-card__label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .data-table th {
+            background: var(--bg-card-hover);
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .data-table td {
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .data-table tr:hover td {
+            background: var(--bg-input);
+        }
+
+        .mobile-preview {
+            max-width: 375px;
+            margin: 0 auto;
+            border-radius: 24px;
+            border: 8px solid var(--border-color);
+            overflow: hidden;
+            background: var(--bg-primary);
+        }
+
+        .mobile-header {
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .mobile-header__title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .mobile-content {
+            padding: 16px;
+        }
+
+        .mobile-card {
+            padding: 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            margin-bottom: 12px;
+        }
+
+        .mobile-card__title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .mobile-card__meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .mobile-card__tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .mobile-tag {
+            padding: 4px 8px;
+            border-radius: var(--radius-full);
+            background: var(--bg-input);
+            color: var(--text-secondary);
+            font-size: 0.6875rem;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .preview-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .preview-controls {
+                flex-direction: column;
+            }
+
+            .control-group {
+                justify-content: space-between;
+            }
+
+            .theme-selector {
+                flex-wrap: wrap;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="preview-header">
+        <div class="preview-header__title">追漫阁 - 配色方案预览</div>
+        <div class="preview-controls">
+            <div class="control-group">
+                <span class="control-label">主题:</span>
+                <div class="theme-selector">
+                    <button class="theme-btn active" data-theme="neon-purple" onclick="setTheme('neon-purple')">
+                        <span class="theme-btn__color" style="background: linear-gradient(135deg, #8b5cf6, #d8b4fe)"></span>
+                        霓虹紫
+                    </button>
+                    <button class="theme-btn" data-theme="ocean-blue" onclick="setTheme('ocean-blue')">
+                        <span class="theme-btn__color" style="background: linear-gradient(135deg, #0ea5e9, #38bdf8)"></span>
+                        海洋蓝
+                    </button>
+                    <button class="theme-btn" data-theme="sunset-orange" onclick="setTheme('sunset-orange')">
+                        <span class="theme-btn__color" style="background: linear-gradient(135deg, #f97316, #fb923c)"></span>
+                        日落橙
+                    </button>
+                    <button class="theme-btn" data-theme="emerald-green" onclick="setTheme('emerald-green')">
+                        <span class="theme-btn__color" style="background: linear-gradient(135deg, #10b981, #2dd4bf)"></span>
+                        翡翠绿
+                    </button>
+                    <button class="theme-btn" data-theme="sakura-pink" onclick="setTheme('sakura-pink')">
+                        <span class="theme-btn__color" style="background: linear-gradient(135deg, #ec4899, #f472b6)"></span>
+                        樱花粉
+                    </button>
+                </div>
+            </div>
+            <div class="control-group">
+                <span class="control-label">模式:</span>
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="dark" onclick="setMode('dark')">深色</button>
+                    <button class="mode-btn" data-mode="light" onclick="setMode('light')">浅色</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="preview-content">
+        <section class="page-preview">
+            <div class="page-preview__header">
+                <h2 class="page-preview__title">配色方案预览</h2>
+                <span class="page-preview__badge">配色</span>
+            </div>
+            <div class="page-preview__content">
+                <div class="color-swatches" id="colorSwatches">
+                </div>
+            </div>
+        </section>
+
+        <section class="page-preview">
+            <div class="page-preview__header">
+                <h2 class="page-preview__title">仪表盘</h2>
+                <span class="page-preview__badge">核心页面</span>
+            </div>
+            <div class="page-preview__content">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-card__value" style="color: var(--accent)">1,234</div>
+                        <div class="stat-card__label">总章节数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card__value" style="color: var(--success)">89</div>
+                        <div class="stat-card__label">今日新增</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card__value" style="color: var(--warning)">12</div>
+                        <div class="stat-card__label">待处理</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="page-preview">
+            <div class="page-preview__header">
+                <h2 class="page-preview__title">数据可视化</h2>
+                <span class="page-preview__badge">核心页面</span>
+            </div>
+            <div class="page-preview__content">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>漫画名称</th>
+                            <th>章节</th>
+                            <th>状态</th>
+                            <th>更新时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>异世界勇者</td>
+                            <td>第156章</td>
+                            <td><span class="badge badge--success">已完成</span></td>
+                            <td>2分钟前</td>
+                        </tr>
+                        <tr>
+                            <td>时空旅行者</td>
+                            <td>第89章</td>
+                            <td><span class="badge badge--warning">进行中</span></td>
+                            <td>1小时前</td>
+                        </tr>
+                        <tr>
+                            <td>魔法学院</td>
+                            <td>第234章</td>
+                            <td><span class="badge badge--error">异常</span></td>
+                            <td>3小时前</td>
+                        </tr>
+                        <tr>
+                            <td>星际战争</td>
+                            <td>第45章</td>
+                            <td><span class="badge badge--info">新更新</span></td>
+                            <td>5小时前</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="page-preview">
+            <div class="page-preview__header">
+                <h2 class="page-preview__title">移动端界面</h2>
+                <span class="page-preview__badge">核心页面</span>
+            </div>
+            <div class="page-preview__content">
+                <div class="mobile-preview">
+                    <div class="mobile-header">
+                        <div class="mobile-header__title">追漫阁</div>
+                    </div>
+                    <div class="mobile-content">
+                        <div class="mobile-card">
+                            <div class="mobile-card__title">异世界勇者</div>
+                            <div class="mobile-card__meta">更新至第156章 · 2分钟前</div>
+                            <div class="mobile-card__tags">
+                                <span class="mobile-tag">奇幻</span>
+                                <span class="mobile-tag">冒险</span>
+                                <span class="mobile-tag">热血</span>
+                            </div>
+                        </div>
+                        <div class="mobile-card">
+                            <div class="mobile-card__title">时空旅行者</div>
+                            <div class="mobile-card__meta">更新至第89章 · 1小时前</div>
+                            <div class="mobile-card__tags">
+                                <span class="mobile-tag">科幻</span>
+                                <span class="mobile-tag">悬疑</span>
+                            </div>
+                        </div>
+                        <div class="mobile-card">
+                            <div class="mobile-card__title">魔法学院</div>
+                            <div class="mobile-card__meta">更新至第234章 · 3小时前</div>
+                            <div class="mobile-card__tags">
+                                <span class="mobile-tag">魔法</span>
+                                <span class="mobile-tag">校园</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="page-preview">
+            <div class="page-preview__header">
+                <h2 class="page-preview__title">组件展示</h2>
+                <span class="page-preview__badge">UI组件</span>
+            </div>
+            <div class="page-preview__content">
+                <div class="component-showcase">
+                    <div class="component-card">
+                        <div class="component-card__title">按钮</div>
+                        <div class="button-group">
+                            <button class="btn btn--primary">主要按钮</button>
+                            <button class="btn btn--secondary">次要按钮</button>
+                            <button class="btn btn--disabled" disabled>禁用按钮</button>
+                        </div>
+                    </div>
+                    <div class="component-card">
+                        <div class="component-card__title">输入框</div>
+                        <div class="input-group">
+                            <label class="input-label">搜索漫画</label>
+                            <input type="text" class="input" placeholder="输入漫画名称...">
+                        </div>
+                    </div>
+                    <div class="component-card">
+                        <div class="component-card__title">状态徽章</div>
+                        <div class="status-badges">
+                            <span class="badge badge--success">成功</span>
+                            <span class="badge badge--warning">警告</span>
+                            <span class="badge badge--error">错误</span>
+                            <span class="badge badge--info">信息</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const themes = {
+            'neon-purple': {
+                name: '霓虹紫',
+                colors: {
+                    dark: {
+                        primary: { name: '主色', hex: '#8b5cf6', text: '#ffffff' },
+                        background: { name: '背景', hex: '#0a0a12', text: '#f0f0f8' },
+                        card: { name: '卡片', hex: '#16162a', text: '#f0f0f8' },
+                        textPrimary: { name: '主要文本', hex: '#f0f0f8', text: '#0a0a12' },
+                        textSecondary: { name: '次要文本', hex: '#b0b0d0', text: '#0a0a12' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#f87171', text: '#ffffff' }
+                    },
+                    light: {
+                        primary: { name: '主色', hex: '#8b5cf6', text: '#ffffff' },
+                        background: { name: '背景', hex: '#f8f9fc', text: '#1a1a2e' },
+                        card: { name: '卡片', hex: '#ffffff', text: '#1a1a2e' },
+                        textPrimary: { name: '主要文本', hex: '#1a1a2e', text: '#f8f9fc' },
+                        textSecondary: { name: '次要文本', hex: '#4a5568', text: '#f8f9fc' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#f87171', text: '#ffffff' }
+                    }
+                }
+            },
+            'ocean-blue': {
+                name: '海洋蓝',
+                colors: {
+                    dark: {
+                        primary: { name: '主色', hex: '#0ea5e9', text: '#ffffff' },
+                        background: { name: '背景', hex: '#0a1628', text: '#f0f8ff' },
+                        card: { name: '卡片', hex: '#0f1f35', text: '#f0f8ff' },
+                        textPrimary: { name: '主要文本', hex: '#f0f8ff', text: '#0a1628' },
+                        textSecondary: { name: '次要文本', hex: '#a8c8e8', text: '#0a1628' },
+                        success: { name: '成功', hex: '#2dd4bf', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    },
+                    light: {
+                        primary: { name: '主色', hex: '#0ea5e9', text: '#ffffff' },
+                        background: { name: '背景', hex: '#f0f7ff', text: '#0a1628' },
+                        card: { name: '卡片', hex: '#ffffff', text: '#0a1628' },
+                        textPrimary: { name: '主要文本', hex: '#0a1628', text: '#f0f7ff' },
+                        textSecondary: { name: '次要文本', hex: '#475569', text: '#f0f7ff' },
+                        success: { name: '成功', hex: '#2dd4bf', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    }
+                }
+            },
+            'sunset-orange': {
+                name: '日落橙',
+                colors: {
+                    dark: {
+                        primary: { name: '主色', hex: '#f97316', text: '#ffffff' },
+                        background: { name: '背景', hex: '#1a0f0a', text: '#fff8f0' },
+                        card: { name: '卡片', hex: '#251a12', text: '#fff8f0' },
+                        textPrimary: { name: '主要文本', hex: '#fff8f0', text: '#1a0f0a' },
+                        textSecondary: { name: '次要文本', hex: '#d4c4b0', text: '#1a0f0a' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fcd34d', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    },
+                    light: {
+                        primary: { name: '主色', hex: '#f97316', text: '#ffffff' },
+                        background: { name: '背景', hex: '#fff8f0', text: '#1a0f0a' },
+                        card: { name: '卡片', hex: '#ffffff', text: '#1a0f0a' },
+                        textPrimary: { name: '主要文本', hex: '#1a0f0a', text: '#fff8f0' },
+                        textSecondary: { name: '次要文本', hex: '#5a4a3a', text: '#fff8f0' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fcd34d', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    }
+                }
+            },
+            'emerald-green': {
+                name: '翡翠绿',
+                colors: {
+                    dark: {
+                        primary: { name: '主色', hex: '#10b981', text: '#ffffff' },
+                        background: { name: '背景', hex: '#0a1a15', text: '#f0fff8' },
+                        card: { name: '卡片', hex: '#0f251f', text: '#f0fff8' },
+                        textPrimary: { name: '主要文本', hex: '#f0fff8', text: '#0a1a15' },
+                        textSecondary: { name: '次要文本', hex: '#a8d4c8', text: '#0a1a15' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    },
+                    light: {
+                        primary: { name: '主色', hex: '#10b981', text: '#ffffff' },
+                        background: { name: '背景', hex: '#f0fff8', text: '#0a1a15' },
+                        card: { name: '卡片', hex: '#ffffff', text: '#0a1a15' },
+                        textPrimary: { name: '主要文本', hex: '#0a1a15', text: '#f0fff8' },
+                        textSecondary: { name: '次要文本', hex: '#4a5a54', text: '#f0fff8' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    }
+                }
+            },
+            'sakura-pink': {
+                name: '樱花粉',
+                colors: {
+                    dark: {
+                        primary: { name: '主色', hex: '#ec4899', text: '#ffffff' },
+                        background: { name: '背景', hex: '#1a0f18', text: '#fff8f8' },
+                        card: { name: '卡片', hex: '#251a22', text: '#fff8f8' },
+                        textPrimary: { name: '主要文本', hex: '#fff8f8', text: '#1a0f18' },
+                        textSecondary: { name: '次要文本', hex: '#d4c4d0', text: '#1a0f18' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    },
+                    light: {
+                        primary: { name: '主色', hex: '#ec4899', text: '#ffffff' },
+                        background: { name: '背景', hex: '#fff8f8', text: '#1a0f18' },
+                        card: { name: '卡片', hex: '#ffffff', text: '#1a0f18' },
+                        textPrimary: { name: '主要文本', hex: '#1a0f18', text: '#fff8f8' },
+                        textSecondary: { name: '次要文本', hex: '#5a4a58', text: '#fff8f8' },
+                        success: { name: '成功', hex: '#34d399', text: '#ffffff' },
+                        warning: { name: '警告', hex: '#fbbf24', text: '#ffffff' },
+                        error: { name: '错误', hex: '#fb7185', text: '#ffffff' }
+                    }
+                }
+            }
+        };
+
+        let currentTheme = 'neon-purple';
+        let currentMode = 'dark';
+
+        function setTheme(themeId) {
+            currentTheme = themeId;
+            updateTheme();
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            updateTheme();
+        }
+
+        function updateTheme() {
+            const fullTheme = `${currentTheme}-${currentMode}`;
+            document.documentElement.setAttribute('data-theme', fullTheme);
+            
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.theme === currentTheme);
+            });
+            
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === currentMode);
+            });
+            
+            renderColorSwatches();
+        }
+
+        function getContrastRatio(hex1, hex2) {
+            const getLuminance = (hex) => {
+                const rgb = parseInt(hex.slice(1), 16);
+                const r = ((rgb >> 16) & 0xff) / 255;
+                const g = ((rgb >> 8) & 0xff) / 255;
+                const b = (rgb & 0xff) / 255;
+                const a = [r, g, b].map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+                return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+            };
+            const l1 = getLuminance(hex1);
+            const l2 = getLuminance(hex2);
+            const lighter = Math.max(l1, l2);
+            const darker = Math.min(l1, l2);
+            return (lighter + 0.05) / (darker + 0.05);
+        }
+
+        function renderColorSwatches() {
+            const container = document.getElementById('colorSwatches');
+            const themeData = themes[currentTheme].colors[currentMode];
+            
+            container.innerHTML = Object.entries(themeData).map(([key, color]) => {
+                const contrast = getContrastRatio(color.hex, color.text);
+                const wcag = contrast >= 7 ? 'AAA' : contrast >= 4.5 ? 'AA' : 'Fail';
+                const wcagClass = wcag === 'AAA' ? 'badge--success' : wcag === 'AA' ? 'badge--info' : 'badge--error';
+                
+                return `
+                    <div class="color-swatch">
+                        <div class="color-swatch__preview" style="background: ${color.hex}; color: ${color.text}">
+                            ${color.hex.toUpperCase()}
+                        </div>
+                        <div class="color-swatch__info">
+                            <div class="color-swatch__name">${color.name}</div>
+                            <div class="color-swatch__hex">${color.hex.toUpperCase()}</div>
+                            <div class="color-swatch__contrast">对比度: ${contrast.toFixed(2)}:1 <span class="badge ${wcagClass}" style="margin-left: 8px; padding: 2px 8px; font-size: 0.625rem;">${wcag}</span></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        renderColorSwatches();
+    </script>
+</body>
+</html>

@@ -2,6 +2,8 @@
 追漫阁 - 任务调度器
 """
 import logging
+from datetime import datetime
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from app.db import database as db
@@ -106,9 +108,61 @@ def _tg_backup_task():
         if result.get("success"):
             logger.info(f"定时 TG 备份成功: {result.get('filename')}")
         else:
-            logger.error(f"定时 TG 备份失败: {result.get('error')}")
+            error_msg = result.get("error", "未知错误")
+            logger.error(f"定时 TG 备份失败: {error_msg}")
+            _send_backup_alert("error", f"备份失败: {error_msg}")
     except Exception as e:
+        error_msg = f"备份异常: {str(e)}"
         logger.error(f"定时 TG 备份异常: {e}")
+        _send_backup_alert("error", error_msg)
+
+
+def _send_backup_alert(alert_type: str, message: str):
+    """发送备份告警到 Telegram
+    
+    Args:
+        alert_type: 告警类型 (error, warning, info)
+        message: 告警消息
+    """
+    from app import config
+    
+    token = db.get_setting("tg_bot_token", "") or config.TG_BOT_TOKEN
+    chat_id = db.get_setting("tg_chat_id", "") or config.TG_CHAT_ID
+    
+    if not token or not chat_id:
+        logger.warning("未配置 Telegram，无法发送备份告警")
+        return
+    
+    emoji_map = {
+        "error": "❌",
+        "warning": "⚠️",
+        "info": "ℹ️"
+    }
+    
+    emoji = emoji_map.get(alert_type, "📋")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    alert_text = (
+        f"{emoji} 追漫阁备份告警\n\n"
+        f"⏰ 时间: {timestamp}\n"
+        f"🔔 类型: {alert_type.upper()}\n"
+        f"📝 消息: {message}"
+    )
+    
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        resp = requests.post(
+            url,
+            data={"chat_id": chat_id, "text": alert_text},
+            timeout=10
+        )
+        
+        if resp.status_code == 200 and resp.json().get("ok"):
+            logger.info("备份告警发送成功")
+        else:
+            logger.warning(f"备份告警发送失败: {resp.text}")
+    except Exception as e:
+        logger.warning(f"备份告警发送异常: {e}")
 
 
 def stop_scheduler():

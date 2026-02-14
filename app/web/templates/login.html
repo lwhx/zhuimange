@@ -19,13 +19,14 @@
 
         body {
             font-family: 'Inter', 'Noto Sans SC', sans-serif;
-            background: #0f0f1a;
-            color: #e8e8f0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            transition: background var(--transition-normal), color var(--transition-normal);
         }
 
         /* 动态背景 */
@@ -147,10 +148,10 @@
         .form-input {
             width: 100%;
             padding: 14px 16px;
-            background: rgba(15, 15, 26, 0.6);
-            border: 1px solid rgba(99, 102, 241, 0.2);
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
             border-radius: 12px;
-            color: #e8e8f0;
+            color: var(--text-primary);
             font-size: 0.95rem;
             font-family: inherit;
             outline: none;
@@ -158,12 +159,12 @@
         }
 
         .form-input:focus {
-            border-color: rgba(99, 102, 241, 0.6);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            border-color: var(--border-hover);
+            box-shadow: 0 0 0 3px var(--accent-glow);
         }
 
         .form-input::placeholder {
-            color: rgba(232, 232, 240, 0.3);
+            color: var(--text-muted);
         }
 
         .login-btn {
@@ -211,7 +212,7 @@
 
         .error-msg {
             text-align: center;
-            color: #f87171;
+            color: var(--danger);
             font-size: 0.85rem;
             margin-top: 16px;
             opacity: 0;
@@ -235,6 +236,7 @@
         <p class="login-card__subtitle">个人动漫追更管理平台</p>
 
         <form method="POST" action="/login" id="login-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label>访问密码</label>
                 <input type="password" name="password" class="form-input" placeholder="请输入访问密码" autofocus

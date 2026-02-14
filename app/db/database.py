@@ -10,14 +10,26 @@ from app import config
 
 logger = logging.getLogger(__name__)
 
+DB_PATH = None
+
 
 def get_db_path() -> str:
     """获取数据库文件路径"""
+    global DB_PATH
+    if DB_PATH:
+        return DB_PATH
     db_path = config.DATABASE_PATH
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
     return db_path
+
+
+def get_db_connection():
+    """获取数据库连接（非上下文管理器版本，用于测试）"""
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 @contextmanager
@@ -37,8 +49,25 @@ def get_connection():
         conn.close()
 
 
-def init_db():
-    """初始化数据库，创建所有表"""
+def init_db(use_migrations: bool = None):
+    """初始化数据库，创建所有表
+    
+    Args:
+        use_migrations: 是否使用 Alembic 迁移，默认 True（测试环境为 False）
+    """
+    from flask import current_app
+    
+    if use_migrations is None:
+        use_migrations = current_app.config.get('USE_MIGRATIONS', not getattr(current_app.config, 'TESTING', False))
+    
+    if use_migrations:
+        from app.db.migration import upgrade_database
+        try:
+            upgrade_database()
+            return
+        except Exception as e:
+            logger.warning(f"迁移执行失败，回退到传统初始化: {e}")
+    
     with get_connection() as conn:
         c = conn.cursor()
 
@@ -144,12 +173,23 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
 
+        # 全局别名表
+        c.execute('''CREATE TABLE IF NOT EXISTS global_aliases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            alias TEXT NOT NULL,
+            category TEXT DEFAULT 'donghua',
+            UNIQUE(title, alias)
+        )''')
+
         # 创建索引
         c.execute("CREATE INDEX IF NOT EXISTS idx_episodes_anime_id ON episodes(anime_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sources_episode_id ON sources(episode_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sources_video_id ON sources(video_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sync_logs_anime_id ON sync_logs(anime_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_custom_aliases_anime_id ON custom_aliases(anime_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_global_aliases_title ON global_aliases(title)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_global_aliases_alias ON global_aliases(alias)")
 
         # 插入默认设置
         default_settings = {
@@ -489,3 +529,245 @@ def is_trusted_channel(channel_id: str) -> bool:
             (channel_id,)
         ).fetchone()
         return row is not None
+
+
+# ==================== 全局别名 ====================
+
+def get_all_global_aliases() -> list[dict]:
+    """获取所有全局别名"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM global_aliases ORDER BY title, alias"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_global_aliases_by_title(title: str) -> list[str]:
+    """根据标题获取别名列表"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT alias FROM global_aliases WHERE title = ?",
+            (title,)
+        ).fetchall()
+        return [row["alias"] for row in rows]
+
+
+def get_global_aliases_by_category(category: str) -> list[dict]:
+    """根据类别获取全局别名"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM global_aliases WHERE category = ? ORDER BY title, alias",
+            (category,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def add_global_alias(title: str, alias: str, category: str = "donghua") -> bool:
+    """添加全局别名
+    
+    Returns:
+        True if added successfully, False if duplicate
+    """
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO global_aliases (title, alias, category) VALUES (?, ?, ?)",
+                (title, alias, category)
+            )
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def delete_global_alias(alias_id: int) -> bool:
+    """删除全局别名
+    
+    Returns:
+        True if deleted, False if not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM global_aliases WHERE id = ?",
+            (alias_id,)
+        )
+        return cursor.rowcount > 0
+
+
+def search_global_aliases_by_alias(alias: str) -> list[dict]:
+    """根据别名搜索（模糊匹配）
+    
+    Returns:
+        匹配的标题和别名列表
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT title FROM global_aliases WHERE alias LIKE ?",
+            (f"%{alias}%",)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_all_global_aliases_dict() -> dict[str, list[str]]:
+    """获取所有全局别名，返回字典格式 {title: [aliases]}"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT title, alias FROM global_aliases ORDER BY title, alias"
+        ).fetchall()
+        result: dict[str, list[str]] = {}
+        for row in rows:
+            title = row["title"]
+            alias = row["alias"]
+            if title not in result:
+                result[title] = []
+            result[title].append(alias)
+        return result
+
+
+def init_default_global_aliases() -> int:
+    """初始化默认全局别名（从 config.py 迁移）
+    
+    Returns:
+        插入的别名数量
+    """
+    from app import config
+    
+    inserted_count = 0
+    for title, aliases in config.DONGHUA_ALIASES.items():
+        for alias in aliases:
+            if add_global_alias(title, alias, "donghua"):
+                inserted_count += 1
+    return inserted_count
+
+
+# ==================== 备份日志 ====================
+
+def add_backup_log(backup_type: str, status: str, message: str = "", 
+                   file_size: int = 0, file_name: str = "", error_code: str = "") -> int:
+    """添加备份日志
+    
+    Args:
+        backup_type: 备份类型 (telegram, local)
+        status: 状态 (success, error, partial)
+        message: 消息
+        file_size: 文件大小（字节）
+        file_name: 文件名
+        error_code: 错误代码
+    
+    Returns:
+        插入的记录ID
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO backup_logs 
+               (backup_type, status, message, file_size, file_name, error_code)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (backup_type, status, message, file_size, file_name, error_code)
+        )
+        return cursor.lastrowid
+
+
+def get_backup_logs(backup_type: str = None, status: str = None, limit: int = 50) -> list[dict]:
+    """获取备份日志
+    
+    Args:
+        backup_type: 备份类型筛选
+        status: 状态筛选
+        limit: 返回数量限制
+    
+    Returns:
+        备份日志列表
+    """
+    with get_connection() as conn:
+        query = "SELECT * FROM backup_logs"
+        params = []
+        conditions = []
+        
+        if backup_type:
+            conditions.append("backup_type = ?")
+            params.append(backup_type)
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_backup_stats(days: int = 30) -> dict:
+    """获取备份统计信息
+    
+    Args:
+        days: 统计最近多少天
+    
+    Returns:
+        统计信息字典
+    """
+    with get_connection() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) as count FROM backup_logs WHERE created_at >= datetime('now', ?)",
+            (f'-{days} days',)
+        ).fetchone()["count"]
+        
+        success = conn.execute(
+            "SELECT COUNT(*) as count FROM backup_logs WHERE status = 'success' AND created_at >= datetime('now', ?)",
+            (f'-{days} days',)
+        ).fetchone()["count"]
+        
+        error = conn.execute(
+            "SELECT COUNT(*) as count FROM backup_logs WHERE status = 'error' AND created_at >= datetime('now', ?)",
+            (f'-{days} days',)
+        ).fetchone()["count"]
+        
+        total_size = conn.execute(
+            "SELECT SUM(file_size) as total FROM backup_logs WHERE status = 'success' AND created_at >= datetime('now', ?)",
+            (f'-{days} days',)
+        ).fetchone()["total"] or 0
+        
+        return {
+            "total_backups": total,
+            "successful_backups": success,
+            "failed_backups": error,
+            "success_rate": round(success / total * 100, 2) if total > 0 else 0,
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size / 1024 / 1024, 2),
+            "period_days": days
+        }
+
+
+def get_latest_backup(backup_type: str = "telegram") -> dict:
+    """获取最新备份记录
+    
+    Args:
+        backup_type: 备份类型
+    
+    Returns:
+        最新备份记录，如果没有则返回 None
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM backup_logs WHERE backup_type = ? ORDER BY created_at DESC LIMIT 1",
+            (backup_type,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def cleanup_old_backup_logs(days: int = 180) -> int:
+    """清理过期备份日志
+    
+    Args:
+        days: 保留天数
+    
+    Returns:
+        删除的记录数
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"DELETE FROM backup_logs WHERE created_at < datetime('now', '-{days} days')"
+        )
+        return cursor.rowcount

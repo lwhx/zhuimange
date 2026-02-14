@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import tempfile
+import hashlib
 from datetime import datetime
 import requests
 from app import config
@@ -177,10 +178,17 @@ def send_backup_to_telegram() -> dict:
     chat_id = db.get_setting("tg_chat_id", "") or config.TG_CHAT_ID
 
     if not token or not chat_id:
-        return {"success": False, "error": "未配置 TG_BOT_TOKEN 或 TG_CHAT_ID"}
+        error_msg = "未配置 TG_BOT_TOKEN 或 TG_CHAT_ID"
+        logger.warning(error_msg)
+        db.add_backup_log("telegram", "error", error_msg, 0, "", "NO_CONFIG")
+        return {"success": False, "error": error_msg}
 
+    tmp_path = None
+    file_size = 0
+    
     try:
         json_str = export_json()
+        file_size = len(json_str.encode('utf-8'))
         now = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"zhuimange_backup_{now}.json"
 
@@ -193,6 +201,7 @@ def send_backup_to_telegram() -> dict:
         )
         tmp.write(json_str)
         tmp.close()
+        tmp_path = tmp.name
 
         with open(tmp.name, "rb") as f:
             resp = requests.post(
@@ -202,16 +211,158 @@ def send_backup_to_telegram() -> dict:
                 timeout=30,
             )
 
-        os.unlink(tmp.name)
-
         if resp.status_code == 200 and resp.json().get("ok"):
             logger.info(f"Telegram 备份发送成功: {filename}")
+            db.add_backup_log("telegram", "success", "备份发送成功", file_size, filename)
             return {"success": True, "filename": filename}
         else:
             error = resp.json().get("description", resp.text)
+            error_code = resp.json().get("error_code", "TG_API_ERROR")
             logger.error(f"Telegram 备份发送失败: {error}")
+            db.add_backup_log("telegram", "error", error, 0, filename, error_code)
             return {"success": False, "error": error}
 
-    except Exception as e:
+    except requests.exceptions.Timeout:
+        error_msg = "Telegram API 请求超时"
+        logger.error(error_msg)
+        db.add_backup_log("telegram", "error", error_msg, 0, "", "TIMEOUT")
+        return {"success": False, "error": error_msg}
+    except requests.exceptions.RequestException as e:
+        error_msg = f"网络请求失败: {str(e)}"
         logger.error(f"Telegram 备份异常: {e}")
+        db.add_backup_log("telegram", "error", error_msg, 0, "", "NETWORK_ERROR")
+        return {"success": False, "error": error_msg}
+    except Exception as e:
+        error_msg = f"备份异常: {str(e)}"
+        logger.error(f"Telegram 备份异常: {e}")
+        db.add_backup_log("telegram", "error", error_msg, 0, "", "UNKNOWN_ERROR")
         return {"success": False, "error": str(e)}
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception as e:
+                logger.warning(f"临时文件清理失败: {e}")
+
+
+def calculate_backup_checksum(data: dict) -> str:
+    """计算备份数据的校验和
+    
+    Args:
+        data: 备份数据字典
+    
+    Returns:
+        SHA256 哈希值
+    """
+    json_str = json.dumps(data, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+
+
+def verify_backup_integrity(data: dict, expected_checksum: str = None) -> dict:
+    """验证备份数据的完整性
+    
+    Args:
+        data: 备份数据字典
+        expected_checksum: 期望的校验和（可选）
+    
+    Returns:
+        验证结果字典
+    """
+    result = {
+        "valid": True,
+        "checksum": "",
+        "checksum_match": False,
+        "animes_count": 0,
+        "episodes_count": 0,
+        "sources_count": 0,
+        "errors": []
+    }
+    
+    # 检查基本结构
+    if data.get("app") != "追漫阁":
+        result["valid"] = False
+        result["errors"].append("无效的备份文件标识")
+    
+    if "animes" not in data:
+        result["valid"] = False
+        result["errors"].append("缺少 animes 数据")
+    else:
+        result["animes_count"] = len(data["animes"])
+    
+    # 统计数据量
+    episodes_count = 0
+    sources_count = 0
+    for anime_entry in data.get("animes", []):
+        episodes = anime_entry.get("episodes", [])
+        episodes_count += len(episodes)
+        for ep in episodes:
+            sources_count += len(ep.get("sources", []))
+    
+    result["episodes_count"] = episodes_count
+    result["sources_count"] = sources_count
+    
+    # 计算校验和
+    result["checksum"] = calculate_backup_checksum(data)
+    
+    # 验证校验和
+    if expected_checksum:
+        result["checksum_match"] = result["checksum"] == expected_checksum
+        if not result["checksum_match"]:
+            result["valid"] = False
+            result["errors"].append("校验和不匹配")
+    
+    return result
+
+
+def save_backup_local(backup_dir: str = None) -> dict:
+    """保存备份到本地文件
+    
+    Args:
+        backup_dir: 备份目录路径，默认为 data/backups
+    
+    Returns:
+        备份结果
+    """
+    import os
+    
+    if not backup_dir:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        backup_dir = os.path.join(base_dir, "data", "backups")
+    
+    try:
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        data = export_data()
+        json_str = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+        checksum = calculate_backup_checksum(data)
+        
+        now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"zhuimange_backup_{now}.json"
+        filepath = os.path.join(backup_dir, filename)
+        
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(json_str)
+        
+        file_size = os.path.getsize(filepath)
+        
+        logger.info(f"本地备份成功: {filename}, 大小: {file_size} 字节")
+        db.add_backup_log("local", "success", "备份保存成功", file_size, filename)
+        
+        return {
+            "success": True,
+            "filename": filename,
+            "filepath": filepath,
+            "file_size": file_size,
+            "checksum": checksum
+        }
+        
+    except OSError as e:
+        error_msg = f"文件系统错误: {str(e)}"
+        logger.error(f"本地备份失败: {error_msg}")
+        db.add_backup_log("local", "error", error_msg, 0, "", "FILESYSTEM_ERROR")
+        return {"success": False, "error": error_msg}
+    except Exception as e:
+        error_msg = f"本地备份异常: {str(e)}"
+        logger.error(f"本地备份异常: {e}")
+        db.add_backup_log("local", "error", error_msg, 0, "", "UNKNOWN_ERROR")
+        return {"success": False, "error": error_msg}

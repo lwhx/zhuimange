@@ -2,6 +2,111 @@
  * 追漫阁 - 前端交互
  */
 
+// ==================== 主题管理 ====================
+
+const ThemeManager = {
+    STORAGE_KEY: 'zhuimange-theme',
+    MODE_KEY: 'zhuimange-theme-mode',
+
+    themes: [
+        { id: 'neon-purple', name: '霓虹紫', icon: '💜' },
+        { id: 'ocean-blue', name: '海洋蓝', icon: '🌊' },
+        { id: 'sunset-orange', name: '日落橙', icon: '🌅' },
+        { id: 'emerald-green', name: '翡翠绿', icon: '💚' },
+        { id: 'sakura-pink', name: '樱花粉', icon: '🌸' }
+    ],
+
+    init() {
+        const savedTheme = localStorage.getItem(this.STORAGE_KEY);
+        const savedMode = localStorage.getItem(this.MODE_KEY);
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        const theme = savedTheme || 'neon-purple';
+        const mode = savedMode || (prefersDark ? 'dark' : 'light');
+
+        this.applyTheme(theme, mode, false);
+
+        // 监听系统主题变化
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            if (!localStorage.getItem(this.MODE_KEY)) {
+                const newMode = e.matches ? 'dark' : 'light';
+                this.setMode(newMode);
+            }
+        });
+    },
+
+    setTheme(themeId, save = true) {
+        const theme = this.themes.find(t => t.id === themeId) || this.themes[0];
+        const mode = this.getCurrentMode();
+        this.applyTheme(theme.id, mode, save);
+        if (save) localStorage.setItem(this.STORAGE_KEY, theme.id);
+    },
+
+    setMode(mode, save = true) {
+        const theme = this.getCurrentTheme();
+        this.applyTheme(theme.id, mode, save);
+        if (save) localStorage.setItem(this.MODE_KEY, mode);
+    },
+
+    applyTheme(themeId, mode, save) {
+        const fullTheme = `${themeId}-${mode}`;
+        document.documentElement.setAttribute('data-theme', fullTheme);
+
+        // 清除可能残留的内联样式覆盖
+        document.documentElement.style.removeProperty('--bg-primary');
+        document.documentElement.style.removeProperty('--text-primary');
+
+        this.updateIcon(themeId, mode);
+        updateThemeDropdownActive();
+    },
+
+    getCurrentTheme() {
+        const saved = localStorage.getItem(this.STORAGE_KEY) || 'neon-purple';
+        return this.themes.find(t => t.id === saved) || this.themes[0];
+    },
+
+    getCurrentMode() {
+        return localStorage.getItem(this.MODE_KEY) || 'dark';
+    },
+
+    updateIcon(themeId, mode) {
+        const btn = document.querySelector('.navbar__theme-toggle');
+        if (!btn) return;
+        btn.innerHTML = mode === 'dark' ? '☀️' : '🌙';
+        const theme = this.themes.find(t => t.id === themeId) || this.themes[0];
+        btn.title = `${theme.name} (${mode === 'dark' ? '深色' : '浅色'})`;
+    },
+};
+
+function toggleThemeDropdown() {
+    const dropdown = document.getElementById('theme-dropdown');
+    if (dropdown) dropdown.classList.toggle('active');
+}
+
+function closeThemeDropdown() {
+    const dropdown = document.getElementById('theme-dropdown');
+    if (dropdown) dropdown.classList.remove('active');
+}
+
+function updateThemeDropdownActive() {
+    const currentTheme = ThemeManager.getCurrentTheme();
+    const currentMode = ThemeManager.getCurrentMode();
+
+    document.querySelectorAll('.theme-mode-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.classList.contains(`theme-mode-btn--${currentMode}`)) {
+            btn.classList.add('active');
+        }
+    });
+
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.theme === currentTheme.id) {
+            btn.classList.add('active');
+        }
+    });
+}
+
 // ==================== Toast 通知 ====================
 
 const ToastManager = {
@@ -40,9 +145,19 @@ const ToastManager = {
 
 async function apiRequest(url, options = {}) {
     try {
+        const headers = {};
+        // 只在有 body 时设置 Content-Type
+        if (options.body) {
+            headers['Content-Type'] = 'application/json';
+        }
+        // 添加 CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (csrfToken) {
+            headers['X-CSRFToken'] = csrfToken.getAttribute('content');
+        }
         const resp = await fetch(url, {
-            headers: { 'Content-Type': 'application/json' },
             ...options,
+            headers: { ...headers, ...(options.headers || {}) },
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -54,6 +169,7 @@ async function apiRequest(url, options = {}) {
         throw err;
     }
 }
+
 
 // ==================== 搜索功能 ====================
 
@@ -190,6 +306,12 @@ async function markWatched(animeId, epNum) {
             item.classList.add('episode-item--watched');
             const numEl = item.querySelector('.episode-item__num');
             if (numEl) numEl.innerHTML = '✓';
+            // 切换按钮显示
+            const btns = item.querySelectorAll('.episode-item__actions .btn');
+            btns.forEach(btn => {
+                if (btn.textContent.trim() === '✓') btn.style.display = 'none';
+                if (btn.textContent.trim() === '↩️') btn.style.display = '';
+            });
         }
         updateProgressBar(animeId);
     } catch (err) { /* handled */ }
@@ -206,6 +328,12 @@ async function markUnwatched(animeId, epNum) {
             item.classList.remove('episode-item--watched');
             const numEl = item.querySelector('.episode-item__num');
             if (numEl) numEl.textContent = epNum;
+            // 切换按钮显示
+            const btns = item.querySelectorAll('.episode-item__actions .btn');
+            btns.forEach(btn => {
+                if (btn.textContent.trim() === '✓') btn.style.display = '';
+                if (btn.textContent.trim() === '↩️') btn.style.display = 'none';
+            });
         }
         updateProgressBar(animeId);
     } catch (err) { /* handled */ }
@@ -550,11 +678,34 @@ async function telegramBackup() {
 // ==================== 初始化 ====================
 
 document.addEventListener('DOMContentLoaded', () => {
+    ThemeManager.init();
     ToastManager.init();
     initSearch();
 
-    // ESC 关闭模态框
+    // 主题切换按钮
+    const themeToggle = document.querySelector('.navbar__theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleThemeDropdown();
+        });
+    }
+
+    updateThemeDropdownActive();
+
+    // ESC 关闭模态框和主题下拉菜单
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeSourcesModal();
+        if (e.key === 'Escape') {
+            closeSourcesModal();
+            closeThemeDropdown();
+        }
+    });
+
+    // 点击外部关闭主题下拉菜单
+    document.addEventListener('click', (e) => {
+        const themeSelector = document.querySelector('.navbar__theme-selector');
+        if (themeSelector && !themeSelector.contains(e.target)) {
+            closeThemeDropdown();
+        }
     });
 });

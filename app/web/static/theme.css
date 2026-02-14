@@ -58,6 +58,47 @@
     --container-max: 1280px;
 }
 
+/* 亮色主题 */
+:root[data-theme="light"] {
+    --bg-primary: #f5f7fa;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e8eaed;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f8f9fc;
+    --bg-modal: #ffffff;
+    --bg-input: #f0f2f5;
+    --bg-glass: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a5568;
+    --text-muted: #718096;
+    --text-accent: #6b46c1;
+
+    --accent: #6b46c1;
+    --accent-light: #805ad5;
+    --accent-dark: #553c9a;
+    --accent-glow: rgba(107, 70, 193, 0.25);
+
+    --success: #059669;
+    --success-bg: rgba(5, 150, 105, 0.1);
+    --warning: #d97706;
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --danger: #dc2626;
+    --danger-bg: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+
+    --gradient-primary: linear-gradient(135deg, #6b46c1, #8b5cf6);
+    --gradient-card: linear-gradient(145deg, #ffffff, #f8f9fc);
+    --gradient-hero: linear-gradient(180deg, rgba(107, 70, 193, 0.05) 0%, transparent 60%);
+
+    --border-color: rgba(107, 70, 193, 0.15);
+    --border-hover: rgba(107, 70, 193, 0.3);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
 /* ===== Reset & Base ===== */
 *,
 *::before,
@@ -80,6 +121,7 @@ body {
     line-height: 1.6;
     min-height: 100vh;
     overflow-x: hidden;
+    transition: background var(--transition-normal), color var(--transition-normal);
 }
 
 a {
@@ -182,6 +224,173 @@ textarea {
     color: var(--accent-light);
 }
 
+.navbar__theme-toggle {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    transition: all var(--transition-fast);
+}
+
+.navbar__theme-toggle:hover {
+    background: var(--bg-card-hover);
+    color: var(--accent);
+    border-color: var(--border-hover);
+}
+
+.navbar__theme-selector {
+    position: relative;
+}
+
+.navbar__theme-dropdown {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    width: 320px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: all var(--transition-normal);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.navbar__theme-dropdown.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.theme-dropdown__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-card-hover);
+}
+
+.theme-dropdown__header span {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.theme-dropdown__close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+}
+
+.theme-dropdown__close:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.theme-dropdown__modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.theme-mode-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+}
+
+.theme-mode-btn:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+}
+
+.theme-mode-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.theme-dropdown__themes {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.theme-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.theme-btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-hover);
+}
+
+.theme-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+}
+
+.theme-btn__color {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
+}
+
+.theme-btn__icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.theme-btn__name {
+    flex: 1;
+    text-align: left;
+    font-weight: 500;
+}
+
 /* ===== 主内容区 ===== */
 .main-content {
     padding-top: calc(var(--header-height) + 24px);
@@ -191,6 +400,8 @@ textarea {
     padding-right: 24px;
     padding-bottom: 48px;
     min-height: 100vh;
+    background: var(--bg-primary);
+    transition: background var(--transition-normal);
 }
 
 /* ===== 页面标题 ===== */
@@ -381,6 +592,8 @@ textarea {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 24px;
+    background: transparent;
+    transition: background var(--transition-normal);
 }
 
 .anime-card {
@@ -610,6 +823,23 @@ textarea {
 .episode-item--watched .episode-item__num {
     background: var(--success-bg);
     color: var(--success);
+    position: relative;
+}
+
+.episode-item--watched .episode-item__num::after {
+    content: '✓';
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    background: var(--success);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .episode-item__info {
@@ -1035,6 +1265,322 @@ textarea {
     border-radius: var(--radius-lg);
     padding: 24px;
     margin-bottom: 24px;
+}
+
+/* ===== 移动端响应式 ===== */
+@media (max-width: 768px) {
+    /* CSS 变量调整 */
+    :root {
+        --header-height: 56px;
+        --container-max: 100%;
+        --radius-md: 10px;
+        --radius-lg: 12px;
+    }
+
+    /* 导航栏 */
+    .navbar {
+        padding: 0 16px;
+    }
+
+    .navbar__brand {
+        font-size: 1rem;
+    }
+
+    .navbar__brand-icon {
+        font-size: 1.2rem;
+    }
+
+    .navbar__nav {
+        gap: 4px;
+    }
+
+    .navbar__link {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+
+    /* 主内容区 */
+    .main-content {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: calc(var(--header-height) + 16px);
+        padding-bottom: 32px;
+    }
+
+    /* 页面标题 */
+    .page-header {
+        margin-bottom: 24px;
+    }
+
+    .page-header__title {
+        font-size: 1.4rem;
+    }
+
+    /* 搜索框 */
+    .search-box {
+        margin-bottom: 24px;
+    }
+
+    .search-box__input {
+        padding: 12px 16px 12px 40px;
+        font-size: 0.95rem;
+    }
+
+    .search-box__icon {
+        left: 14px;
+        font-size: 1rem;
+    }
+
+    /* 搜索结果 */
+    .search-results {
+        max-height: 400px;
+    }
+
+    .search-result-item {
+        padding: 10px 12px;
+    }
+
+    .search-result-item__poster {
+        width: 40px;
+        height: 56px;
+    }
+
+    /* 筛选标签 */
+    .filter-tabs {
+        gap: 6px;
+        margin-bottom: 16px;
+    }
+
+    .filter-tab {
+        padding: 6px 14px;
+        font-size: 0.8rem;
+    }
+
+    /* 动漫网格 */
+    .anime-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .anime-card__body {
+        padding: 10px;
+    }
+
+    .anime-card__title {
+        font-size: 0.85rem;
+    }
+
+    .anime-card__badge {
+        padding: 2px 6px;
+        font-size: 0.65rem;
+    }
+
+    /* 动漫详情页 */
+    .anime-detail {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .anime-detail__poster {
+        max-width: 200px;
+        margin: 0 auto;
+    }
+
+    .anime-detail__title {
+        font-size: 1.4rem;
+    }
+
+    .anime-detail__meta {
+        gap: 8px;
+    }
+
+    .anime-detail__meta-item {
+        padding: 4px 10px;
+        font-size: 0.8rem;
+    }
+
+    .anime-detail__overview {
+        font-size: 0.85rem;
+    }
+
+    .anime-detail__actions {
+        gap: 8px;
+    }
+
+    /* 集数列表 */
+    .episodes-section__header {
+        margin-bottom: 16px;
+    }
+
+    .episodes-section__title {
+        font-size: 1rem;
+    }
+
+    .episodes-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .episode-item {
+        padding: 10px 12px;
+    }
+
+    .episode-item__num {
+        width: 32px;
+        height: 32px;
+        font-size: 0.85rem;
+    }
+
+    /* 模态框 */
+    .modal {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .modal__header {
+        padding: 16px;
+    }
+
+    .modal__body {
+        padding: 16px;
+    }
+
+    /* 源列表 */
+    .source-item {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px;
+    }
+
+    .source-item__link {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* 设置页面 */
+    .settings-section {
+        padding: 16px;
+    }
+
+    .settings-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .settings-row__control {
+        width: 100%;
+    }
+
+    .settings-row__control input,
+    .settings-row__control select {
+        width: 100%;
+        min-width: unset;
+    }
+
+    /* 按钮 */
+    .btn {
+        padding: 8px 16px;
+        font-size: 0.85rem;
+    }
+
+    .btn--sm {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+    }
+
+    /* Toast 通知 */
+    .toast-container {
+        right: 8px;
+        left: 8px;
+    }
+
+    .toast {
+        max-width: 100%;
+    }
+
+    /* 空状态 */
+    .empty-state {
+        padding: 40px 16px;
+    }
+
+    .empty-state__icon {
+        font-size: 3rem;
+    }
+
+    /* 滚动条 */
+    ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* 超小屏幕适配 */
+    .anime-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .navbar__link {
+        padding: 6px 8px;
+        font-size: 0.75rem;
+    }
+
+    .page-header__title {
+        font-size: 1.2rem;
+    }
+
+    .anime-card__title {
+        font-size: 0.8rem;
+    }
+
+    .episode-item__title {
+        font-size: 0.8rem;
+    }
+
+    .source-item__title {
+        font-size: 0.85rem;
+    }
+}
+
+/* ===== 触摸优化 ===== */
+@media (hover: none) and (pointer: coarse) {
+    .anime-card:hover {
+        transform: none;
+    }
+
+    .episode-item:hover {
+        border-color: var(--border-color);
+        background: var(--bg-card);
+    }
+
+    .btn:hover {
+        transform: none;
+    }
+
+    .search-result-item__add-btn:hover {
+        transform: none;
+    }
+
+    .source-item__link:hover {
+        transform: none;
+    }
+}
+
+/* ===== 横屏优化 ===== */
+@media (max-width: 768px) and (orientation: landscape) {
+    .main-content {
+        padding-top: calc(var(--header-height) + 12px);
+        padding-bottom: 20px;
+    }
+
+    .anime-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .episodes-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .manual-add-form.visible {

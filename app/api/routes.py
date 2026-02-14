@@ -2,11 +2,13 @@
 追漫阁 - API 路由
 """
 import logging
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 from app.db import database as db
 from app.core.tmdb_client import tmdb_client
 from app.core.source_finder import find_sources_for_episode, sync_anime_sources
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
+from app.core.response import success_response, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,10 @@ def search_anime():
     """搜索动漫 (TMDB)"""
     query = request.args.get('q', '').strip()
     if not query:
-        return jsonify({"error": "请输入搜索关键词"}), 400
+        return error_response("请输入搜索关键词")
 
     results = tmdb_client.search_anime(query)
-    return jsonify(results)
+    return success_response(results, message="搜索成功")
 
 
 # ==================== 动漫管理 ====================
@@ -34,17 +36,17 @@ def add_anime():
     data = request.json or {}
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id:
-        return jsonify({"error": "缺少 tmdb_id"}), 400
+        return error_response("缺少 tmdb_id")
 
     # 检查是否已添加
     existing = db.get_anime_by_tmdb_id(tmdb_id)
     if existing:
-        return jsonify({"error": "该动漫已添加", "anime_id": existing["id"]}), 400
+        return error_response("该动漫已添加", code="ANIME_EXISTS")
 
     # 从 TMDB 获取详情
     detail = tmdb_client.get_anime_detail(tmdb_id)
     if not detail:
-        return jsonify({"error": "无法获取动漫信息"}), 500
+        return error_response("无法获取动漫信息", code="TMDB_ERROR", status_code=500)
 
     # 保存动漫
     anime_id = db.add_anime(detail)
@@ -55,7 +57,7 @@ def add_anime():
         if episodes:
             db.add_episodes(anime_id, episodes)
 
-    return jsonify({"success": True, "anime_id": anime_id})
+    return success_response({"anime_id": anime_id}, message="动漫添加成功")
 
 
 @api.route('/anime/add_manual', methods=['POST'])
@@ -64,7 +66,7 @@ def add_anime_manual():
     data = request.json or {}
     title = data.get('title', '').strip()
     if not title:
-        return jsonify({"error": "缺少动漫名称"}), 400
+        return error_response("缺少动漫名称")
 
     total_episodes = data.get('total_episodes', 0)
 
@@ -103,7 +105,7 @@ def add_anime_manual():
         if alias.strip():
             db.add_alias(anime_id, alias.strip())
 
-    return jsonify({"success": True, "anime_id": anime_id})
+    return success_response({"anime_id": anime_id}, message="手动添加动漫成功")
 
 
 @api.route('/anime/<int:anime_id>', methods=['DELETE'])
@@ -111,9 +113,9 @@ def delete_anime(anime_id):
     """删除动漫"""
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
     db.delete_anime(anime_id)
-    return jsonify({"success": True})
+    return success_response(message="动漫删除成功")
 
 
 @api.route('/anime/list')
@@ -125,7 +127,7 @@ def list_animes():
         episodes = db.get_episodes(anime["id"])
         anime["unwatched_count"] = sum(1 for ep in episodes if not ep.get("watched"))
         anime["episode_count"] = len(episodes)
-    return jsonify(animes)
+    return success_response(animes, message="获取动漫列表成功")
 
 
 @api.route('/anime/<int:anime_id>')
@@ -133,7 +135,7 @@ def get_anime(anime_id):
     """获取动漫详情"""
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     episodes = db.get_episodes(anime_id)
     aliases = db.get_aliases(anime_id)
@@ -149,7 +151,7 @@ def get_anime(anime_id):
     anime["rules"] = rules
     anime["unwatched_count"] = sum(1 for ep in episodes if not ep.get("watched"))
 
-    return jsonify(anime)
+    return success_response(anime, message="获取动漫详情成功")
 
 
 # ==================== 进度管理 ====================
@@ -159,10 +161,10 @@ def mark_watched(anime_id, ep_num):
     """标记集数已看"""
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     db.mark_episode_watched(anime_id, ep_num, True)
-    return jsonify({"success": True})
+    return success_response(message="标记已看成功")
 
 
 @api.route('/anime/<int:anime_id>/episode/<int:ep_num>/unwatch', methods=['POST'])
@@ -170,10 +172,10 @@ def mark_unwatched(anime_id, ep_num):
     """标记集数未看"""
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     db.mark_episode_watched(anime_id, ep_num, False)
-    return jsonify({"success": True})
+    return success_response(message="标记未看成功")
 
 
 @api.route('/anime/<int:anime_id>/progress', methods=['PUT'])
@@ -182,11 +184,11 @@ def update_progress(anime_id):
     data = request.json or {}
     watched_ep = data.get('watched_ep')
     if watched_ep is None:
-        return jsonify({"error": "缺少 watched_ep"}), 400
+        return error_response("缺少 watched_ep")
 
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     # 批量标记已看
     episodes = db.get_episodes(anime_id)
@@ -197,7 +199,7 @@ def update_progress(anime_id):
             db.mark_episode_watched(anime_id, ep["absolute_num"], False)
 
     db.update_anime(anime_id, {"watched_ep": watched_ep})
-    return jsonify({"success": True})
+    return success_response(message="更新观看进度成功")
 
 
 # ==================== 视频源 ====================
@@ -207,7 +209,7 @@ def get_sources(anime_id, ep_num):
     """获取集数的视频源"""
     episode = db.get_episode_by_num(anime_id, ep_num)
     if not episode:
-        return jsonify({"error": "集数不存在"}), 404
+        return error_response("集数不存在", code="EPISODE_NOT_FOUND", status_code=404)
 
     sources = db.get_sources_for_episode(episode["id"])
 
@@ -217,7 +219,7 @@ def get_sources(anime_id, ep_num):
         source["duration_fmt"] = format_duration(source.get("duration", 0))
         source["view_count_fmt"] = format_view_count(source.get("view_count", 0))
 
-    return jsonify(sources)
+    return success_response(sources, message="获取视频源成功")
 
 
 @api.route('/anime/<int:anime_id>/episode/<int:ep_num>/find_sources', methods=['POST'])
@@ -225,7 +227,7 @@ def find_sources(anime_id, ep_num):
     """主动搜索视频源"""
     force = request.json.get('force', False) if request.json else False
     sources = find_sources_for_episode(anime_id, ep_num, force=force)
-    return jsonify({"success": True, "count": len(sources)})
+    return success_response({"count": len(sources)}, message=f"找到 {len(sources)} 个视频源")
 
 
 # ==================== 同步 ====================
@@ -235,10 +237,12 @@ def sync_anime(anime_id):
     """同步动漫视频源"""
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     result = sync_anime_sources(anime_id)
-    return jsonify(result)
+    if result.get("success"):
+        return success_response(result, message="同步完成")
+    return error_response(result.get("message", "同步失败"), status_code=500)
 
 
 @api.route('/anime/<int:anime_id>/sync_stream')
@@ -249,7 +253,7 @@ def sync_anime_stream(anime_id):
 
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     def generate():
         from app.core.source_finder import find_sources_for_episode, discover_latest_episode
@@ -328,7 +332,7 @@ def sync_anime_stream(anime_id):
 def get_settings():
     """获取所有设置"""
     settings = db.get_all_settings()
-    return jsonify(settings)
+    return success_response(settings, message="获取设置成功")
 
 
 @api.route('/settings', methods=['PUT'])
@@ -356,31 +360,30 @@ def update_settings():
         except Exception as e:
             logger.error(f"更新 TG 备份计划失败: {e}")
 
-    return jsonify({"success": True})
+    return success_response(message="更新设置成功")
 
 
 @api.route('/change_password', methods=['POST'])
 def change_password():
     """修改访问密码"""
-    import hashlib
+    from app.core.auth import hash_password, verify_password
     data = request.json or {}
     old_pwd = data.get('old_password', '')
     new_pwd = data.get('new_password', '')
 
     if not old_pwd or not new_pwd:
-        return jsonify({"error": "请填写完整"}), 400
+        return error_response("请填写完整")
     if len(new_pwd) < 4:
-        return jsonify({"error": "新密码至少4位"}), 400
+        return error_response("新密码至少4位", code="PASSWORD_TOO_SHORT")
 
-    old_hash = hashlib.sha256(old_pwd.encode()).hexdigest()
     stored_hash = db.get_setting('auth_password', '')
 
-    if old_hash != stored_hash:
-        return jsonify({"error": "当前密码错误"}), 400
+    if not verify_password(old_pwd, stored_hash):
+        return error_response("当前密码错误", code="INVALID_PASSWORD")
 
-    new_hash = hashlib.sha256(new_pwd.encode()).hexdigest()
+    new_hash = hash_password(new_pwd)
     db.set_setting('auth_password', new_hash)
-    return jsonify({"success": True})
+    return success_response(message="密码修改成功")
 
 
 # ==================== 搜索规则 ====================
@@ -390,11 +393,11 @@ def update_rules(anime_id):
     """更新动漫搜索规则"""
     anime = db.get_anime(anime_id)
     if not anime:
-        return jsonify({"error": "动漫不存在"}), 404
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     data = request.json or {}
     db.set_source_rules(anime_id, data)
-    return jsonify({"success": True})
+    return success_response(message="更新搜索规则成功")
 
 
 # ==================== 别名管理 ====================
@@ -405,10 +408,10 @@ def add_anime_alias(anime_id):
     data = request.json or {}
     alias = data.get('alias', '').strip()
     if not alias:
-        return jsonify({"error": "缺少别名"}), 400
+        return error_response("缺少别名")
 
     db.add_alias(anime_id, alias)
-    return jsonify({"success": True})
+    return success_response(message="添加别名成功")
 
 
 # ==================== 同步日志 ====================
@@ -419,7 +422,7 @@ def get_sync_logs():
     anime_id = request.args.get('anime_id', type=int)
     limit = request.args.get('limit', 20, type=int)
     logs = db.get_sync_logs(anime_id, limit)
-    return jsonify(logs)
+    return success_response(logs, message="获取同步日志成功")
 
 
 # ==================== 备份与恢复 ====================
@@ -452,19 +455,19 @@ def backup_import():
         # 尝试从 JSON body 读取
         data = request.json
         if not data:
-            return jsonify({"error": "请上传备份文件"}), 400
+            return error_response("请上传备份文件")
     else:
         try:
             import json as _json
             data = _json.loads(file.read().decode('utf-8'))
         except Exception as e:
-            return jsonify({"error": f"文件解析失败: {e}"}), 400
+            return error_response(f"文件解析失败: {e}", code="FILE_PARSE_ERROR")
 
     if data.get("app") != "追漫阁":
-        return jsonify({"error": "无效的备份文件"}), 400
+        return error_response("无效的备份文件", code="INVALID_BACKUP_FILE")
 
     stats = import_data(data)
-    return jsonify({"success": True, **stats})
+    return success_response(stats, message="备份导入成功")
 
 
 @api.route('/backup/telegram', methods=['POST'])
@@ -473,6 +476,134 @@ def backup_telegram():
     from app.core.backup import send_backup_to_telegram
     result = send_backup_to_telegram()
     if result["success"]:
-        return jsonify(result)
-    else:
-        return jsonify(result), 400
+        return success_response(result, message="备份发送成功")
+    return error_response(result.get("error", "备份发送失败"), status_code=400)
+
+
+@api.route('/backup/local', methods=['POST'])
+def backup_local():
+    """发送备份到本地文件"""
+    from app.core.backup import save_backup_local
+    result = save_backup_local()
+    if result["success"]:
+        return success_response(result, message="本地备份成功")
+    return error_response(result.get("error", "本地备份失败"), status_code=400)
+
+
+@api.route('/backup/logs')
+def backup_logs():
+    """获取备份日志"""
+    backup_type = request.args.get('type')
+    status = request.args.get('status')
+    limit = int(request.args.get('limit', 50))
+    
+    logs = db.get_backup_logs(backup_type=backup_type, status=status, limit=limit)
+    return success_response(logs)
+
+
+@api.route('/backup/stats')
+def backup_stats():
+    """获取备份统计信息"""
+    days = int(request.args.get('days', 30))
+    stats = db.get_backup_stats(days=days)
+    return success_response(stats)
+
+
+@api.route('/backup/scheduler/status')
+def scheduler_status():
+    """获取调度器状态"""
+    from app.core.scheduler import scheduler
+    
+    jobs = []
+    for job in scheduler.get_jobs():
+        jobs.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run_time": str(job.next_run_time) if job.next_run_time else None
+        })
+    
+    return success_response({
+        "running": scheduler.running,
+        "jobs": jobs
+    })
+
+
+@api.route('/backup/storage/check')
+def storage_check():
+    """检查存储空间可用性"""
+    import os
+    import shutil
+    
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    backup_dir = os.path.join(base_dir, "data", "backups")
+    
+    # 检查备份目录
+    backup_dir_exists = os.path.exists(backup_dir)
+    backup_dir_writable = False
+    
+    if backup_dir_exists:
+        try:
+            test_file = os.path.join(backup_dir, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.unlink(test_file)
+            backup_dir_writable = True
+        except Exception:
+            backup_dir_writable = False
+    
+    # 获取磁盘空间
+    total_space = 0
+    free_space = 0
+    used_space = 0
+    
+    try:
+        total, used, free = shutil.disk_usage(base_dir)
+        total_space = total
+        used_space = used
+        free_space = free
+    except Exception as e:
+        return error_response(f"获取磁盘空间失败: {str(e)}")
+    
+    # 统计备份文件数量和总大小
+    backup_files = []
+    backup_count = 0
+    backup_size = 0
+    
+    if backup_dir_exists:
+        try:
+            for filename in os.listdir(backup_dir):
+                if filename.endswith(".json"):
+                    filepath = os.path.join(backup_dir, filename)
+                    file_size = os.path.getsize(filepath)
+                    backup_count += 1
+                    backup_size += file_size
+                    backup_files.append({
+                        "filename": filename,
+                        "size": file_size,
+                        "created_at": datetime.fromtimestamp(os.path.getctime(filepath)).isoformat()
+                    })
+        except Exception as e:
+            logger.warning(f"统计备份文件失败: {e}")
+    
+    return success_response({
+        "backup_dir": {
+            "path": backup_dir,
+            "exists": backup_dir_exists,
+            "writable": backup_dir_writable
+        },
+        "disk": {
+            "total_bytes": total_space,
+            "used_bytes": used_space,
+            "free_bytes": free_space,
+            "total_gb": round(total_space / 1024 / 1024 / 1024, 2),
+            "used_gb": round(used_space / 1024 / 1024 / 1024, 2),
+            "free_gb": round(free_space / 1024 / 1024 / 1024, 2),
+            "usage_percent": round(used_space / total_space * 100, 2) if total_space > 0 else 0
+        },
+        "backups": {
+            "count": backup_count,
+            "total_size_bytes": backup_size,
+            "total_size_mb": round(backup_size / 1024 / 1024, 2),
+            "files": backup_files
+        }
+    })

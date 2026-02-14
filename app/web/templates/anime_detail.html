@@ -165,7 +165,7 @@
         {% for ep in anime.episodes %}
         <div class="episode-item {% if ep.watched %}episode-item--watched{% endif %}" data-ep="{{ ep.absolute_num }}">
             <div class="episode-item__num">
-                {% if ep.watched %}✓{% else %}{{ ep.absolute_num }}{% endif %}
+                {{ ep.absolute_num }}
             </div>
             <div class="episode-item__info">
                 <div class="episode-item__title">
@@ -183,17 +183,14 @@
                     onclick="openSourcesModal({{ anime.id }}, {{ ep.absolute_num }})" title="查看视频源">
                     🎬
                 </button>
-                {% if ep.watched %}
-                <button class="btn btn--sm btn--secondary"
-                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }})" title="标记未看">
-                    ↩️
-                </button>
-                {% else %}
                 <button class="btn btn--sm btn--success" onclick="markWatched({{ anime.id }}, {{ ep.absolute_num }})"
-                    title="标记已看">
+                    title="标记已看"{% if ep.watched %} style="display: none;"{% endif %}>
                     ✓
                 </button>
-                {% endif %}
+                <button class="btn btn--sm btn--secondary"
+                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }})" title="标记未看"{% if not ep.watched %} style="display: none;"{% endif %}>
+                    ↩️
+                </button>
             </div>
         </div>
         {% endfor %}
