@@ -17,12 +17,21 @@ env
 *.swp
 *.swo
 
-# Project files
-.env
+# Tests
+tests/
+pytest.ini
+htmlcov/
+
+# Documentation
 *.md
 LICENSE
+FIGMA_STYLE_LIBRARY.md
+COLOR_PALETTE_SPEC.md
+DEVELOPMENT.md
+
+# Project files
+.env
 data/
 docker-compose*.yml
 .dockerignore
-Dockerfile
 .github/

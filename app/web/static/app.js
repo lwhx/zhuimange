@@ -252,10 +252,81 @@ async function addAnime(tmdbId) {
             body: JSON.stringify({ tmdb_id: tmdbId }),
         });
         ToastManager.success('添加成功！');
-        setTimeout(() => location.reload(), 800);
+
+        const animeId = data.data.anime_id;
+        const animeData = await apiRequest(`/api/anime/${animeId}`);
+        const anime = animeData.data;
+
+        createAnimeCard(anime);
+
+        document.getElementById('search-results').classList.remove('visible');
+        document.getElementById('search-input').value = '';
     } catch (err) {
         // error already shown by apiRequest
     }
+}
+
+function createAnimeCard(anime) {
+    const grid = document.querySelector('.anime-grid');
+    const emptyState = document.querySelector('.empty-state');
+    const headerSubtitle = document.querySelector('.page-header__subtitle');
+    const filterTabs = document.querySelector('.filter-tabs');
+
+    if (emptyState) {
+        emptyState.remove();
+    }
+
+    if (!filterTabs) {
+        const tabsDiv = document.createElement('div');
+        tabsDiv.className = 'filter-tabs';
+        tabsDiv.innerHTML = `
+            <button class="filter-tab active" onclick="filterAnimes('all')">全部</button>
+            <button class="filter-tab" onclick="filterAnimes('airing')">连载中</button>
+            <button class="filter-tab" onclick="filterAnimes('ended')">已完结</button>
+            <button class="filter-tab" onclick="filterAnimes('unwatched')">有更新</button>
+        `;
+        headerSubtitle.parentElement.after(tabsDiv);
+    }
+
+    const card = document.createElement('a');
+    card.href = `/anime/${anime.id}`;
+    card.className = 'anime-card';
+    card.dataset.status = anime.status || '';
+    card.dataset.unwatched = anime.unwatched_count || 0;
+
+    let badge = '';
+    if (anime.unwatched_count > 0) {
+        badge = `<span class="anime-card__badge anime-card__badge--new">${anime.unwatched_count}集更新</span>`;
+    } else if (anime.status === 'Returning Series') {
+        badge = `<span class="anime-card__badge anime-card__badge--airing">连载中</span>`;
+    } else if (anime.status === 'Ended') {
+        badge = `<span class="anime-card__badge anime-card__badge--ended">已完结</span>`;
+    }
+
+    const watchedEp = anime.watched_ep || 0;
+    const totalEp = anime.episode_count || anime.total_episodes || 1;
+    const progressPercent = Math.round(watchedEp / totalEp * 100);
+
+    card.innerHTML = `
+        <div class="anime-card__poster-wrap">
+            ${anime.poster_url ? `<img class="anime-card__poster" src="${anime.poster_url}" alt="${anime.title_cn}" loading="lazy" onerror="this.style.display='none'">` : ''}
+            ${badge}
+        </div>
+        <div class="anime-card__body">
+            <div class="anime-card__title" title="${anime.title_cn}">${anime.title_cn}</div>
+            <div class="anime-card__progress">
+                <div class="anime-card__progress-bar">
+                    <div class="anime-card__progress-fill" style="width: ${progressPercent}%"></div>
+                </div>
+                <span class="anime-card__progress-text">${watchedEp}/${anime.episode_count || anime.total_episodes || '?'}</span>
+            </div>
+        </div>
+    `;
+
+    grid.insertBefore(card, grid.firstChild);
+
+    const currentCount = parseInt(headerSubtitle.textContent.match(/\d+/) || '0', 10);
+    headerSubtitle.textContent = `共 ${currentCount + 1} 部动漫`;
 }
 
 // ==================== 手动添加 ====================
@@ -279,7 +350,7 @@ async function submitManualAdd() {
     }
 
     try {
-        await apiRequest('/api/anime/add_manual', {
+        const data = await apiRequest('/api/anime/add_manual', {
             method: 'POST',
             body: JSON.stringify({
                 title,
@@ -288,7 +359,17 @@ async function submitManualAdd() {
             }),
         });
         ToastManager.success('添加成功！');
-        setTimeout(() => location.reload(), 800);
+
+        const animeId = data.data.anime_id;
+        const animeData = await apiRequest(`/api/anime/${animeId}`);
+        const anime = animeData.data;
+
+        createAnimeCard(anime);
+
+        document.getElementById('manual-title').value = '';
+        document.getElementById('manual-total-ep').value = '';
+        document.getElementById('manual-aliases').value = '';
+        toggleManualAdd();
     } catch (err) { /* handled */ }
 }
 
