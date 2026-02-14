@@ -104,7 +104,7 @@ def _test_invidious_connection():
 def _register_middlewares(app: Flask):
     @app.before_request
     def check_auth():
-        allowed = ('login', 'static', 'health', 'ready', 'metrics')
+        allowed = ('login', 'static', 'health', 'ready', 'metrics', 'api.health_check')
         if request.endpoint and request.endpoint in allowed:
             return
         if request.endpoint is None:

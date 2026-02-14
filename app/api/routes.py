@@ -3,7 +3,7 @@
 """
 import logging
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app.db import database as db
 from app.core.tmdb_client import tmdb_client
 from app.core.source_finder import find_sources_for_episode, sync_anime_sources
@@ -13,6 +13,19 @@ from app.core.response import success_response, error_response
 logger = logging.getLogger(__name__)
 
 api = Blueprint('api', __name__, url_prefix='/api')
+
+
+# ==================== 健康检查 ====================
+
+@api.route('/health')
+def health_check():
+    """健康检查端点（豁免认证和速率限制）"""
+    try:
+        db.check_connection()
+        return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()}), 200
+    except Exception as e:
+        logger.error(f"健康检查失败: {e}")
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
 
 # ==================== 搜索 ====================

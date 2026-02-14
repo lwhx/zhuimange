@@ -49,6 +49,17 @@ def get_connection():
         conn.close()
 
 
+def check_connection():
+    """检查数据库连接是否正常"""
+    try:
+        with get_connection() as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception as e:
+        logger.error(f"数据库连接检查失败: {e}")
+        raise
+
+
 def init_db(use_migrations: bool = None):
     """初始化数据库，创建所有表
     
