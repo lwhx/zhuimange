@@ -117,8 +117,7 @@
             <span class="settings-row__label-desc">下载所有追更数据为 JSON 文件</span>
         </div>
         <div class="settings-row__control">
-            <button class="btn btn--primary btn--sm" onclick="window.location.href='/api/backup/export'">📥 导出
-                JSON</button>
+            <button type="button" class="btn btn--primary btn--sm" onclick="window.location.href='/api/backup/export'">📥 导出 JSON</button>
         </div>
     </div>
 
@@ -129,8 +128,7 @@
         </div>
         <div class="settings-row__control">
             <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importBackup(this)">
-            <button class="btn btn--secondary btn--sm" onclick="document.getElementById('import-file').click()">📤
-                选择文件</button>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="document.getElementById('import-file').click()">📤 选择文件</button>
         </div>
     </div>
 
@@ -165,7 +163,7 @@
             <span class="settings-row__label-desc">立即发送一次备份到 Telegram</span>
         </div>
         <div class="settings-row__control">
-            <button class="btn btn--secondary btn--sm" id="tg-backup-btn" onclick="telegramBackup()">📨 发送到 TG</button>
+            <button type="button" class="btn btn--secondary btn--sm" id="tg-backup-btn" onclick="telegramBackup()">📨 发送到 TG</button>
         </div>
     </div>
 </div>
@@ -197,14 +195,14 @@
             <span class="settings-row__label-text"></span>
         </div>
         <div class="settings-row__control">
-            <button class="btn btn--secondary btn--sm" onclick="changePassword()">🔒 修改密码</button>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="changePassword()">🔒 修改密码</button>
         </div>
     </div>
 </div>
 
 <!-- 保存按钮 -->
 <div style="margin-top:24px;">
-    <button class="btn btn--primary" onclick="saveSettings()">💾 保存设置</button>
+    <button type="button" class="btn btn--primary" onclick="saveSettings()">💾 保存设置</button>
 </div>
 
 <!-- 系统信息 -->

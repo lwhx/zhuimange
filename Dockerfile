@@ -55,4 +55,9 @@ VOLUME ["/app/data"]
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/api/health || exit 1
 
-CMD ["python", "-m", "app.main"]
+CMD ["gunicorn", "--worker-class", "gthread", \
+     "-w", "1", "--threads", "4", \
+     "-b", "0.0.0.0:8000", \
+     "--timeout", "120", \
+     "--access-logfile", "-", \
+     "app.main:create_app()"]

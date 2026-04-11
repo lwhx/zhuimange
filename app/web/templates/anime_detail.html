@@ -3,8 +3,8 @@
 
 {% block content %}
 <!-- 面包屑 -->
-<div style="margin-bottom: 20px;">
-    <a href="/" style="color:var(--text-muted);font-size:0.85rem;">← 返回首页</a>
+<div class="breadcrumb">
+    <a href="/" class="breadcrumb__link">← 返回首页</a>
 </div>
 
 <!-- 动漫信息 -->
@@ -73,7 +73,7 @@
 
         <!-- 操作按钮 -->
         <div class="anime-detail__actions">
-            <button class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{ anime.id }})">🔄 同步视频源</button>
+            <button type="button" class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{ anime.id }})">🔄 同步视频源</button>
             <!-- 同步进度条 -->
             <div id="sync-progress" style="display:none;flex:1;min-width:200px;">
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -85,13 +85,13 @@
                         style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">0/0</span>
                 </div>
             </div>
-            <button class="btn btn--secondary btn--sm"
+            <button type="button" class="btn btn--secondary btn--sm"
                 onclick="document.getElementById('progress-section').classList.toggle('visible')">📊 更新进度</button>
-            <button class="btn btn--secondary btn--sm"
+            <button type="button" class="btn btn--secondary btn--sm"
                 onclick="document.getElementById('rules-section').classList.toggle('visible')">⚙️ 搜索规则</button>
-            <button class="btn btn--secondary btn--sm"
+            <button type="button" class="btn btn--secondary btn--sm"
                 onclick="document.getElementById('alias-section').classList.toggle('visible')">🏷️ 管理别名</button>
-            <button class="btn btn--danger btn--sm" onclick="deleteAnime({{ anime.id }})">🗑️ 删除</button>
+            <button type="button" class="btn btn--danger btn--sm" onclick="deleteAnime({{ anime.id }})">🗑️ 删除</button>
         </div>
 
         <!-- 快速更新进度 -->
@@ -102,7 +102,7 @@
                     max="{{ anime.episodes|length }}"
                     style="width:80px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
                 <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">集</label>
-                <button class="btn btn--primary btn--sm" onclick="updateProgress({{ anime.id }})">更新</button>
+                <button type="button" class="btn btn--primary btn--sm" onclick="updateProgress({{ anime.id }})">更新</button>
             </div>
         </div>
 
@@ -132,7 +132,7 @@
                        value="{{ (anime.rules.deny_channels if anime.rules else '')|replace(' [', '' )|replace(']', ''
                     )|replace('\"', '' ) }}">
             </div>
-            <button class="btn btn--primary btn--sm" onclick="saveRules({{ anime.id }})">保存规则</button>
+            <button type="button" class="btn btn--primary btn--sm" onclick="saveRules({{ anime.id }})">保存规则</button>
         </div>
 
         <!-- 别名管理 -->
@@ -140,7 +140,7 @@
             <div style="display:flex;gap:8px;align-items:center;">
                 <input type="text" id="alias-input" placeholder="输入新别名"
                     style="flex:1;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
-                <button class="btn btn--primary btn--sm" onclick="addAlias({{ anime.id }})">添加</button>
+                <button type="button" class="btn btn--primary btn--sm" onclick="addAlias({{ anime.id }})">添加</button>
             </div>
         </div>
     </div>
@@ -154,7 +154,7 @@
             <span style="color:var(--text-muted);font-size:0.85rem;">
                 {{ anime.unwatched_count }} 集未看
             </span>
-            <button class="btn btn--secondary btn--sm" id="sort-toggle-btn" onclick="toggleEpisodeSort()" title="切换排序">
+            <button type="button" class="btn btn--secondary btn--sm" id="sort-toggle-btn" onclick="toggleEpisodeSort()" aria-label="切换集数排序" title="切换排序">
                 {% if anime.sort_order == 'desc' %}↓ 倒序{% else %}↑ 正序{% endif %}
             </button>
         </div>
@@ -179,16 +179,19 @@
                 </div>
             </div>
             <div class="episode-item__actions">
-                <button class="btn btn--sm btn--secondary"
-                    onclick="openSourcesModal({{ anime.id }}, {{ ep.absolute_num }})" title="查看视频源">
+                <button type="button" class="btn btn--sm btn--secondary"
+                    onclick="openSourcesModal({{ anime.id }}, {{ ep.absolute_num }})"
+                    aria-label="查看第{{ ep.absolute_num }}集视频源" title="查看视频源">
                     🎬
                 </button>
-                <button class="btn btn--sm btn--success" onclick="markWatched({{ anime.id }}, {{ ep.absolute_num }})"
-                    title="标记已看"{% if ep.watched %} style="display: none;"{% endif %}>
+                <button type="button" class="btn btn--sm btn--success"
+                    onclick="markWatched({{ anime.id }}, {{ ep.absolute_num }})"
+                    aria-label="标记第{{ ep.absolute_num }}集已看" title="标记已看"{% if ep.watched %} style="display: none;"{% endif %}>
                     ✓
                 </button>
-                <button class="btn btn--sm btn--secondary"
-                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }})" title="标记未看"{% if not ep.watched %} style="display: none;"{% endif %}>
+                <button type="button" class="btn btn--sm btn--secondary"
+                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }})"
+                    aria-label="取消第{{ ep.absolute_num }}集已看" title="标记未看"{% if not ep.watched %} style="display: none;"{% endif %}>
                     ↩️
                 </button>
             </div>

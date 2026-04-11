@@ -17,7 +17,7 @@
 
 <!-- 手动添加按钮 -->
 <div style="margin-bottom: 24px;">
-    <button class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">
+    <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">
         ✏️ 手动添加动漫
     </button>
 </div>
@@ -38,18 +38,18 @@
         <input type="text" id="manual-aliases" placeholder="例: BTTH, Battle Through the Heavens">
     </div>
     <div style="display:flex;gap:8px;">
-        <button class="btn btn--primary btn--sm" onclick="submitManualAdd()">添加</button>
-        <button class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">取消</button>
+        <button type="button" class="btn btn--primary btn--sm" onclick="submitManualAdd()">添加</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">取消</button>
     </div>
 </div>
 
 <!-- 筛选标签 -->
 {% if animes|length > 0 %}
 <div class="filter-tabs">
-    <button class="filter-tab active" onclick="filterAnimes('all')">全部</button>
-    <button class="filter-tab" onclick="filterAnimes('airing')">连载中</button>
-    <button class="filter-tab" onclick="filterAnimes('ended')">已完结</button>
-    <button class="filter-tab" onclick="filterAnimes('unwatched')">有更新</button>
+    <button type="button" class="filter-tab active" onclick="filterAnimes('all')">全部</button>
+    <button type="button" class="filter-tab" onclick="filterAnimes('airing')">连载中</button>
+    <button type="button" class="filter-tab" onclick="filterAnimes('ended')">已完结</button>
+    <button type="button" class="filter-tab" onclick="filterAnimes('unwatched')">有更新</button>
 </div>
 {% endif %}
 

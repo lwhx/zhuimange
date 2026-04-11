@@ -15,7 +15,11 @@ from flask_caching import Cache
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 from app import config
-from app.db.database import init_db, get_all_animes, get_anime, get_episodes, get_sources_for_episode, get_aliases, get_setting, set_setting
+from app.db.database import (
+    init_db, get_all_animes_with_stats, get_anime, get_episodes,
+    get_sources_for_episode, get_episode_source_counts, get_aliases,
+    get_setting, set_setting,
+)
 from app.core.link_converter import format_duration, format_view_count, invidious_to_youtube
 from app.core.auth import hash_password, verify_password, is_bcrypt_hash
 
@@ -44,6 +48,8 @@ def create_app(test_config: dict = None) -> Flask:
         static_folder=os.path.join(os.path.dirname(__file__), 'web', 'static'),
     )
     app.config['SECRET_KEY'] = config.SECRET_KEY
+    if config.SECRET_KEY == config._DEFAULT_SECRET_KEY:
+        logger.warning("⚠️  SECRET_KEY 使用了默认值，生产环境请设置 SECRET_KEY 环境变量！")
     app.config['JSON_AS_ASCII'] = False
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=AUTH_SESSION_DAYS)
     app.config['WTF_CSRF_TIME_LIMIT'] = None
@@ -76,6 +82,12 @@ def create_app(test_config: dict = None) -> Flask:
     _register_routes(app)
     _register_health_endpoints(app)
 
+    try:
+        from app.core.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.error(f"调度器启动失败: {e}")
+
     return app
 
 
@@ -104,7 +116,7 @@ def _test_invidious_connection():
 def _register_middlewares(app: Flask):
     @app.before_request
     def check_auth():
-        allowed = ('login', 'static', 'health', 'ready', 'metrics', 'api.health_check')
+        allowed = ('login', 'static', 'health', 'ready', 'api.health_check')
         if request.endpoint and request.endpoint in allowed:
             return
         if request.endpoint is None:
@@ -121,16 +133,6 @@ def _register_middlewares(app: Flask):
                 if request.path.startswith('/api/'):
                     abort(401)
                 return redirect(url_for('login'))
-
-    @app.before_request
-    def start_scheduler_once():
-        if not hasattr(app, '_scheduler_started'):
-            app._scheduler_started = True
-            try:
-                from app.core.scheduler import start_scheduler
-                start_scheduler()
-            except Exception as e:
-                logger.error(f"调度器启动失败: {e}")
 
     @app.after_request
     def record_metrics(response):
@@ -223,23 +225,12 @@ def _register_routes(app: Flask):
     @app.route('/')
     @cache.cached(timeout=60, key_prefix='index_page')
     def index():
-        animes = get_all_animes()
         today = date.today().isoformat()
-        for anime in animes:
-            episodes = get_episodes(anime["id"])
-            is_tmdb = anime.get("tmdb_id") is not None
-            aired = []
-            for ep in episodes:
-                if is_tmdb:
-                    air = ep.get("air_date", "")
-                    if not air or air > today:
-                        continue
-                aired.append(ep)
-            anime["unwatched_count"] = sum(1 for ep in aired if not ep.get("watched"))
-            anime["episode_count"] = len(aired)
+        animes = get_all_animes_with_stats(today)
         return render_template('index.html', animes=animes)
 
     @app.route('/anime/<int:anime_id>')
+    @cache.cached(timeout=120, key_prefix=lambda: f'anime_detail_{request.view_args.get("anime_id", "")}')
     def anime_detail(anime_id):
         anime = get_anime(anime_id)
         if not anime:
@@ -247,6 +238,7 @@ def _register_routes(app: Flask):
 
         episodes = get_episodes(anime_id)
         aliases = get_aliases(anime_id)
+        source_counts = get_episode_source_counts(anime_id)
 
         today = date.today().isoformat()
         is_tmdb = anime.get("tmdb_id") is not None
@@ -256,8 +248,7 @@ def _register_routes(app: Flask):
                 air = ep.get("air_date", "")
                 if not air or air > today:
                     continue
-            sources = get_sources_for_episode(ep["id"])
-            ep["source_count"] = len(sources)
+            ep["source_count"] = source_counts.get(ep["id"], 0)
             aired_episodes.append(ep)
 
         sort_order = get_setting("episode_sort_order", "desc")
@@ -328,10 +319,15 @@ def _register_health_endpoints(app: Flask):
 
     @app.route('/metrics')
     def metrics():
+        expected = config.METRICS_TOKEN
+        if expected:
+            token = request.args.get('token') or request.headers.get('X-Metrics-Token', '')
+            if token != expected:
+                abort(403)
         return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 
 if __name__ == '__main__':
     app = create_app()
     port = int(os.getenv('PORT', '8000'))
-    app.run(host='0.0.0.0', port=port, debug=(config.LOG_LEVEL == 'DEBUG'))
+    app.run(host='0.0.0.0', port=port, debug=config.DEBUG)

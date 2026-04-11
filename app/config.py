@@ -10,8 +10,11 @@ load_dotenv()
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATABASE_PATH = os.getenv("DATABASE_PATH", os.path.join(BASE_DIR, "data", "tracker.db"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 TZ = os.getenv("TZ", "Asia/Shanghai")
-SECRET_KEY = os.getenv("SECRET_KEY", "zhuimange-secret-key-change-in-production")
+METRICS_TOKEN = os.getenv("METRICS_TOKEN", "")
+_DEFAULT_SECRET_KEY = "zhuimange-secret-key-change-in-production"
+SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET_KEY)
 
 # ==================== TMDB 配置 ====================
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")

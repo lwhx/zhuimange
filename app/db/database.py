@@ -230,6 +230,28 @@ def get_all_animes() -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def get_all_animes_with_stats(today: str) -> list[dict]:
+    """获取所有动漫（含已播集数和未看统计），单次 JOIN 替代 N+1 查询"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT a.*,
+                COUNT(CASE
+                    WHEN a.tmdb_id IS NULL THEN e.id
+                    WHEN e.air_date != '' AND e.air_date <= ? THEN e.id
+                END) AS episode_count,
+                COUNT(CASE
+                    WHEN (a.tmdb_id IS NULL OR (e.air_date != '' AND e.air_date <= ?))
+                         AND e.watched = 0 THEN e.id
+                END) AS unwatched_count
+            FROM animes a
+            LEFT JOIN episodes e ON a.id = e.anime_id
+            GROUP BY a.id
+            ORDER BY a.updated_at DESC""",
+            (today, today)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
 def get_anime(anime_id: int) -> Optional[dict]:
     """获取单个动漫详情"""
     with get_connection() as conn:
@@ -377,6 +399,20 @@ def get_sources_for_episode(episode_id: int) -> list[dict]:
             (episode_id,)
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_episode_source_counts(anime_id: int) -> dict[int, int]:
+    """获取动漫所有集数的视频源数量，返回 {episode_id: count}"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT e.id, COUNT(s.id) as source_count
+            FROM episodes e
+            LEFT JOIN sources s ON e.id = s.episode_id AND s.is_valid = 1
+            WHERE e.anime_id = ?
+            GROUP BY e.id""",
+            (anime_id,)
+        ).fetchall()
+        return {row["id"]: row["source_count"] for row in rows}
 
 
 def add_source(data: dict) -> int:

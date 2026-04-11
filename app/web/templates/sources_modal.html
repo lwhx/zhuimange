@@ -4,7 +4,7 @@
     <span style="color:var(--text-muted);font-size:0.85rem;">
         {{ anime.title_cn }} · 第{{ episode.absolute_num }}集 · 共 {{ sources|length }} 个视频源
     </span>
-    <button class="btn btn--secondary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
+    <button type="button" class="btn btn--secondary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
         🔄 重新搜索
     </button>
 </div>
@@ -40,7 +40,7 @@
 <div style="text-align:center;padding:40px;">
     <div style="font-size:2.5rem;margin-bottom:12px;opacity:0.5;">🔍</div>
     <div style="color:var(--text-secondary);margin-bottom:16px;">暂无视频源</div>
-    <button class="btn btn--primary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }})">
+    <button type="button" class="btn btn--primary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }})">
         🔍 搜索视频源
     </button>
 </div>

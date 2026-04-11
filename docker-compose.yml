@@ -7,13 +7,12 @@ services:
       - "127.0.0.1:8280:8000"
     volumes:
       - ./data:/app/data:rw
-      - ./logs:/app/logs:rw
     env_file:
       - .env
     environment:
       - DATABASE_PATH=/app/data/tracker.db
       - TZ=Asia/Shanghai
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=INFO
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -26,7 +25,7 @@ services:
       - NET_BIND_SERVICE
     pids_limit: 100
     mem_limit: 512m
-    memswap_limit: 0
+    memswap_limit: 512m
     cpu_shares: 512
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]

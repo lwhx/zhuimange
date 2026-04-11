@@ -6,13 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="追漫阁 - 个人动漫追更管理平台">
     <title>{% block title %}追漫阁{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}?v=4">
     <link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}?v=2">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <script>
         /* 立即应用保存的主题，防止页面闪烁 */
         (function() {
@@ -39,7 +35,6 @@
 </head>
 
 <body>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
     <!-- 导航栏 -->
     <nav class="navbar">
         <a href="/" class="navbar__brand">
@@ -50,42 +45,42 @@
             <a href="/" class="navbar__link {% if request.path == '/' %}active{% endif %}">首页</a>
             <a href="/settings" class="navbar__link {% if request.path == '/settings' %}active{% endif %}">⚙️ 设置</a>
             <div class="navbar__theme-selector">
-                <button class="navbar__theme-toggle" title="切换主题">🌙</button>
+                <button type="button" class="navbar__theme-toggle" aria-label="切换主题" title="切换主题">🌙</button>
                 <div class="navbar__theme-dropdown" id="theme-dropdown">
                     <div class="theme-dropdown__header">
                         <span>🎨 配色方案</span>
-                        <button class="theme-dropdown__close" onclick="toggleThemeDropdown()">&times;</button>
+                        <button type="button" class="theme-dropdown__close" onclick="toggleThemeDropdown()" aria-label="关闭主题选择">&times;</button>
                     </div>
                     <div class="theme-dropdown__modes">
-                        <button class="theme-mode-btn theme-mode-btn--dark active" onclick="ThemeManager.setMode('dark')">
+                        <button type="button" class="theme-mode-btn theme-mode-btn--dark active" onclick="ThemeManager.setMode('dark')">
                             <span>🌙</span> 深色
                         </button>
-                        <button class="theme-mode-btn theme-mode-btn--light" onclick="ThemeManager.setMode('light')">
+                        <button type="button" class="theme-mode-btn theme-mode-btn--light" onclick="ThemeManager.setMode('light')">
                             <span>☀️</span> 浅色
                         </button>
                     </div>
                     <div class="theme-dropdown__themes">
-                        <button class="theme-btn" data-theme="neon-purple" onclick="ThemeManager.setTheme('neon-purple')">
+                        <button type="button" class="theme-btn" data-theme="neon-purple" onclick="ThemeManager.setTheme('neon-purple')">
                             <span class="theme-btn__color" style="background: linear-gradient(135deg, #8b5cf6, #d8b4fe)"></span>
                             <span class="theme-btn__icon">💜</span>
                             <span class="theme-btn__name">霓虹紫</span>
                         </button>
-                        <button class="theme-btn" data-theme="ocean-blue" onclick="ThemeManager.setTheme('ocean-blue')">
+                        <button type="button" class="theme-btn" data-theme="ocean-blue" onclick="ThemeManager.setTheme('ocean-blue')">
                             <span class="theme-btn__color" style="background: linear-gradient(135deg, #0ea5e9, #38bdf8)"></span>
                             <span class="theme-btn__icon">🌊</span>
                             <span class="theme-btn__name">海洋蓝</span>
                         </button>
-                        <button class="theme-btn" data-theme="sunset-orange" onclick="ThemeManager.setTheme('sunset-orange')">
+                        <button type="button" class="theme-btn" data-theme="sunset-orange" onclick="ThemeManager.setTheme('sunset-orange')">
                             <span class="theme-btn__color" style="background: linear-gradient(135deg, #f97316, #fb923c)"></span>
                             <span class="theme-btn__icon">🌅</span>
                             <span class="theme-btn__name">日落橙</span>
                         </button>
-                        <button class="theme-btn" data-theme="emerald-green" onclick="ThemeManager.setTheme('emerald-green')">
+                        <button type="button" class="theme-btn" data-theme="emerald-green" onclick="ThemeManager.setTheme('emerald-green')">
                             <span class="theme-btn__color" style="background: linear-gradient(135deg, #10b981, #2dd4bf)"></span>
                             <span class="theme-btn__icon">💚</span>
                             <span class="theme-btn__name">翡翠绿</span>
                         </button>
-                        <button class="theme-btn" data-theme="sakura-pink" onclick="ThemeManager.setTheme('sakura-pink')">
+                        <button type="button" class="theme-btn" data-theme="sakura-pink" onclick="ThemeManager.setTheme('sakura-pink')">
                             <span class="theme-btn__color" style="background: linear-gradient(135deg, #ec4899, #f472b6)"></span>
                             <span class="theme-btn__icon">🌸</span>
                             <span class="theme-btn__name">樱花粉</span>
@@ -103,11 +98,11 @@
     </main>
 
     <!-- 模态框容器 -->
-    <div id="sources-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeSourcesModal()">
+    <div id="sources-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeSourcesModal()" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal">
             <div class="modal__header">
-                <h3 class="modal__title">视频源</h3>
-                <button class="modal__close" onclick="closeSourcesModal()">&times;</button>
+                <h3 class="modal__title" id="modal-title">视频源</h3>
+                <button type="button" class="modal__close" onclick="closeSourcesModal()" aria-label="关闭">&times;</button>
             </div>
             <div class="modal__body" id="sources-modal-body"></div>
         </div>
@@ -116,7 +111,7 @@
     <!-- Toast 容器 -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="{{ url_for('static', filename='app.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=6"></script>
     {% block scripts %}{% endblock %}
 </body>
 

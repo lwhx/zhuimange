@@ -2,7 +2,7 @@
 追漫阁 - API 路由
 """
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from flask import Blueprint, request, jsonify, current_app
 from app.db import database as db
 from app.core.tmdb_client import tmdb_client
@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 api = Blueprint('api', __name__, url_prefix='/api')
 
 
-def _clear_index_cache():
-    """清除首页缓存，使数据变更立即生效"""
+def _clear_anime_cache(anime_id=None):
+    """清除相关缓存，使数据变更立即生效"""
     try:
-        from flask import current_app
-        cache = current_app.extensions.get('cache')
-        if cache:
-            cache.delete('index_page')
+        c = current_app.extensions.get('cache')
+        if c:
+            c.delete('index_page')
+            if anime_id:
+                c.delete(f'anime_detail_{anime_id}')
     except Exception:
         pass
 
@@ -81,6 +82,7 @@ def add_anime():
         if episodes:
             db.add_episodes(anime_id, episodes)
 
+    _clear_anime_cache()
     return success_response({"anime_id": anime_id}, message="动漫添加成功")
 
 
@@ -130,7 +132,7 @@ def add_anime_manual():
         if alias.strip():
             db.add_alias(anime_id, alias.strip())
 
-    _clear_index_cache()
+    _clear_anime_cache(anime_id)
     return success_response({"anime_id": anime_id}, message="手动添加动漫成功")
 
 
@@ -141,19 +143,15 @@ def delete_anime(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
     db.delete_anime(anime_id)
-    _clear_index_cache()
+    _clear_anime_cache()
     return success_response(message="动漫删除成功")
 
 
 @api.route('/anime/list')
 def list_animes():
     """获取所有动漫列表"""
-    animes = db.get_all_animes()
-    # 为每个动漫附加未看集数统计
-    for anime in animes:
-        episodes = db.get_episodes(anime["id"])
-        anime["unwatched_count"] = sum(1 for ep in episodes if not ep.get("watched"))
-        anime["episode_count"] = len(episodes)
+    today = date.today().isoformat()
+    animes = db.get_all_animes_with_stats(today)
     return success_response(animes, message="获取动漫列表成功")
 
 
@@ -167,11 +165,10 @@ def get_anime(anime_id):
     episodes = db.get_episodes(anime_id)
     aliases = db.get_aliases(anime_id)
     rules = db.get_source_rules(anime_id)
+    source_counts = db.get_episode_source_counts(anime_id)
 
-    # 为每集附加视频源数量
     for ep in episodes:
-        sources = db.get_sources_for_episode(ep["id"])
-        ep["source_count"] = len(sources)
+        ep["source_count"] = source_counts.get(ep["id"], 0)
 
     anime["episodes"] = episodes
     anime["aliases"] = aliases
@@ -191,7 +188,7 @@ def mark_watched(anime_id, ep_num):
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     db.mark_episode_watched(anime_id, ep_num, True)
-    _clear_index_cache()
+    _clear_anime_cache(anime_id)
     return success_response(message="标记已看成功")
 
 
@@ -203,7 +200,7 @@ def mark_unwatched(anime_id, ep_num):
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     db.mark_episode_watched(anime_id, ep_num, False)
-    _clear_index_cache()
+    _clear_anime_cache(anime_id)
     return success_response(message="标记未看成功")
 
 
@@ -228,7 +225,7 @@ def update_progress(anime_id):
             db.mark_episode_watched(anime_id, ep["absolute_num"], False)
 
     db.update_anime(anime_id, {"watched_ep": watched_ep})
-    _clear_index_cache()
+    _clear_anime_cache(anime_id)
     return success_response(message="更新观看进度成功")
 
 
@@ -457,8 +454,8 @@ def change_password():
 
     if not old_pwd or not new_pwd:
         return error_response("请填写完整")
-    if len(new_pwd) < 4:
-        return error_response("新密码至少4位", code="PASSWORD_TOO_SHORT")
+    if len(new_pwd) < 8:
+        return error_response("新密码至少8位", code="PASSWORD_TOO_SHORT")
 
     stored_hash = db.get_setting('auth_password', '')
 
@@ -549,6 +546,8 @@ def backup_import():
 
     if data.get("app") != "追漫阁":
         return error_response("无效的备份文件", code="INVALID_BACKUP_FILE")
+    if not isinstance(data.get("animes"), list):
+        return error_response("备份文件格式错误：缺少 animes 列表", code="INVALID_BACKUP_FILE")
 
     stats = import_data(data)
     return success_response(stats, message="备份导入成功")
@@ -579,8 +578,8 @@ def backup_logs():
     """获取备份日志"""
     backup_type = request.args.get('type')
     status = request.args.get('status')
-    limit = int(request.args.get('limit', 50))
-    
+    limit = request.args.get('limit', 50, type=int) or 50
+
     logs = db.get_backup_logs(backup_type=backup_type, status=status, limit=limit)
     return success_response(logs)
 
@@ -588,7 +587,7 @@ def backup_logs():
 @api.route('/backup/stats')
 def backup_stats():
     """获取备份统计信息"""
-    days = int(request.args.get('days', 30))
+    days = request.args.get('days', 30, type=int) or 30
     stats = db.get_backup_stats(days=days)
     return success_response(stats)
 
@@ -671,7 +670,6 @@ def storage_check():
     
     return success_response({
         "backup_dir": {
-            "path": backup_dir,
             "exists": backup_dir_exists,
             "writable": backup_dir_writable
         },
