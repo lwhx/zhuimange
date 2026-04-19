@@ -2,6 +2,7 @@ services:
   zhuimange:
     image: ghcr.io/lwhx/zhuimange:latest
     container_name: zhuimange
+    user: "0:0"
     restart: unless-stopped
     ports:
       - "127.0.0.1:8280:8000"
@@ -14,7 +15,7 @@ services:
       - TZ=Asia/Shanghai
       - LOG_LEVEL=INFO
     security_opt:
-      - no-new-privileges:true
+      - no-new-privileges:false
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=100m
       - /run:rw,noexec,nosuid,size=10m
