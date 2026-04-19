@@ -4,6 +4,8 @@ services:
     container_name: zhuimange
     user: "0:0"
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8280:8000"
     volumes:
