@@ -1,1 +1,373 @@
-"""\u8ffd\u6f2b\u9601 - \u89c6\u9891\u6e90\u67e5\u627e\u5668\n"""\nimport json\nimport logging\nfrom typing import Optional\nfrom concurrent.futures import ThreadPoolExecutor, as_completed\nimport threading\nfrom app import config\nfrom app.core.invidious_client import get_invidious_client\nfrom app.core.matcher.scorer import score_video\nfrom app.core.matcher.preprocessor import normalize_text, extract_episode_number\nfrom app.db import database as db\n\nlogger = logging.getLogger(__name__)\n\n# \u624b\u52a8\u6dfb\u52a0\u52a8\u6f2b\u7684\u5339\u914d\u9608\u503c\uff08\u66f4\u5bbd\u677e\uff09\nMANUAL_MATCH_THRESHOLD = 30\n\n\ndef _get_search_keywords(anime: dict, episode_num: int, aliases: list[str] = None) -> list[str]:\n    \"\"\"\n    \u751f\u6210\u641c\u7d22\u5173\u952e\u8bcd\u5217\u8868\n\n    Args:\n        anime: \u52a8\u6f2b\u4fe1\u606f\n        episode_num: \u76ee\u6807\u96c6\u6570\n        aliases: \u5df2\u83b7\u53d6\u7684\u522b\u540d\u5217\u8868\uff08\u907f\u514d\u91cd\u590d\u67e5\u8be2\uff09\n\n    Returns:\n        \u5173\u952e\u8bcd\u5217\u8868\n    \"\"\"\n    title = anime.get(\"title_cn\", \"\")\n\n    if aliases is None:\n        aliases = db.get_aliases(anime[\"id\"])\n        aliases.extend(db.get_global_aliases_by_title(title))\n\n    all_names = [title] + aliases\n    # \u53bb\u91cd\n    seen = set()\n    unique_names = []\n    for name in all_names:\n        if name and name.lower() not in seen:\n            seen.add(name.lower())\n            unique_names.append(name)\n\n    keywords = []\n    for name in unique_names[:config.SEARCH_KEYWORDS_LIMIT]:\n        keywords.append(f\"{name} \u7b2c{episode_num}\u96c6\")\n        keywords.append(f\"{name} EP{episode_num}\")\n\n    return keywords\n\n\ndef _apply_source_rules(videos: list[dict], anime_id: int) -> list[dict]:\n    \"\"\"\n    \u5e94\u7528\u641c\u7d22\u89c4\u5219\u8fc7\u6ee4\n\n    Args:\n        videos: \u89c6\u9891\u5217\u8868\n        anime_id: \u52a8\u6f2b ID\n\n    Returns:\n        \u8fc7\u6ee4\u540e\u7684\u89c6\u9891\u5217\u8868\n    \"\"\"\n    rules = db.get_source_rules(anime_id)\n    if not rules:\n        return videos\n\n    allow_keywords = json.loads(rules.get(\"allow_keywords\", \"[]\"))\n    deny_keywords = json.loads(rules.get(\"deny_keywords\", \"[]\"))\n    allow_channels = json.loads(rules.get(\"allow_channels\", \"[]\"))\n    deny_channels = json.loads(rules.get(\"deny_channels\", \"[]\"))\n\n    filtered = []\n    for video in videos:\n        title_lower = video.get(\"title\", \"\").lower()\n        channel_id = video.get(\"channel_id\", \"\")\n\n        # \u9ed1\u540d\u5355\u9891\u9053\n        if deny_channels and channel_id in deny_channels:\n            continue\n\n        # \u9ed1\u540d\u5355\u5173\u952e\u8bcd\n        if deny_keywords and any(kw.lower() in title_lower for kw in deny_keywords):\n            continue\n\n        # \u767d\u540d\u5355\u9891\u9053\uff08\u5982\u6709\u8bbe\u7f6e\uff0c\u5219\u53ea\u4fdd\u7559\u767d\u540d\u5355\u9891\u9053\uff09\n        if allow_channels and channel_id not in allow_channels:\n            continue\n\n        # \u767d\u540d\u5355\u5173\u952e\u8bcd\uff08\u5982\u6709\u8bbe\u7f6e\uff0c\u5fc5\u987b\u5305\u542b\u81f3\u5c11\u4e00\u4e2a\uff09\n        if allow_keywords and not any(kw.lower() in title_lower for kw in allow_keywords):\n            continue\n\n        filtered.append(video)\n\n    return filtered\n\n\ndef find_sources_for_episode(\n    anime_id: int,\n    episode_num: int,\n    force: bool = False,\n) -> list[dict]:\n    \"\"\"\n    \u67e5\u627e\u6307\u5b9a\u96c6\u6570\u7684\u89c6\u9891\u6e90\n\n    Args:\n        anime_id: \u52a8\u6f2b ID\n        episode_num: \u96c6\u6570\n        force: \u662f\u5426\u5f3a\u5236\u641c\u7d22\uff08\u5ffd\u7565\u7f13\u5b58\uff09\n\n    Returns:\n        \u89c6\u9891\u6e90\u5217\u8868\n    \"\"\"\n    anime = db.get_anime(anime_id)\n    if not anime:\n        logger.error(f\"\u52a8\u6f2b\u4e0d\u5b58\u5728: anime_id={anime_id}\")\n        return []\n\n    # \u83b7\u53d6\u5bf9\u5e94\u96c6\u6570\u8bb0\u5f55\n    episode = db.get_episode_by_num(anime_id, episode_num)\n    if not episode:\n        logger.error(f\"\u96c6\u6570\u4e0d\u5b58\u5728: anime_id={anime_id}, ep={episode_num}\")\n        return []\n\n    # \u68c0\u67e5\u7f13\u5b58\uff08\u975e\u5f3a\u5236\u6a21\u5f0f\u4e0b\uff09\n    if not force:\n        existing_sources = db.get_sources_for_episode(episode[\"id\"])\n        if existing_sources:\n            logger.info(f\"\u4f7f\u7528\u7f13\u5b58\u89c6\u9891\u6e90: {anime['title_cn']} \u7b2c{episode_num}\u96c6 ({len(existing_sources)}\u4e2a)\")\n            return existing_sources\n\n    # \u83b7\u53d6\u522b\u540d\u5217\u8868\uff08\u4e00\u6b21\u67e5\u8be2\uff0c\u590d\u7528\u4e8e\u5173\u952e\u8bcd\u548c\u8bc4\u5206\uff09\n    aliases = db.get_aliases(anime_id)\n    aliases.extend(db.get_global_aliases_by_title(anime[\"title_cn\"]))\n\n    # \u751f\u6210\u641c\u7d22\u5173\u952e\u8bcd\n    keywords = _get_search_keywords(anime, episode_num, aliases)\n    logger.info(f\"\u641c\u7d22\u5173\u952e\u8bcd: {keywords}\")\n\n    # \u641c\u7d22\u5e76\u6536\u96c6\u6240\u6709\u7ed3\u679c\n    all_videos = []\n    seen_ids = set()\n\n    for keyword in keywords:\n        try:\n            videos = get_invidious_client().search_videos(keyword, max_results=config.MAX_SEARCH_RESULTS)\n            logger.info(f\"\u5173\u952e\u8bcd '{keyword}' \u641c\u7d22\u5230 {len(videos)} \u4e2a\u89c6\u9891\")\n            for video in videos:\n                vid = video.get(\"video_id\", \"\")\n                if vid and vid not in seen_ids:\n                    seen_ids.add(vid)\n                    all_videos.append(video)\n        except Exception as e:\n            logger.error(f\"\u641c\u7d22\u5173\u952e\u8bcd '{keyword}' \u51fa\u9519: {type(e).__name__}: {e}\")\n\n    logger.info(f\"\u53bb\u91cd\u540e\u627e\u5230 {len(all_videos)} \u4e2a\u5019\u9009\u89c6\u9891\")\n\n    # \u5e94\u7528\u641c\u7d22\u89c4\u5219\n    all_videos = _apply_source_rules(all_videos, anime_id)\n    logger.info(f\"\u89c4\u5219\u8fc7\u6ee4\u540e: {len(all_videos)} \u4e2a\u89c6\u9891\")\n\n    # \u5224\u65ad\u662f\u5426\u4e3a\u624b\u52a8\u6dfb\u52a0\u7684\u52a8\u6f2b\uff08\u4f7f\u7528\u66f4\u4f4e\u9608\u503c\uff09\n    is_manual = anime.get(\"tmdb_id\") is None\n    threshold = MANUAL_MATCH_THRESHOLD if is_manual else config.MATCH_THRESHOLD\n    if is_manual:\n        logger.info(f\"\u624b\u52a8\u6dfb\u52a0\u52a8\u6f2b\uff0c\u4f7f\u7528\u5bbd\u677e\u9608\u503c: {threshold}\")\n\n    # \u8bc4\u5206\u5e76\u6392\u5e8f\n    scored_videos = []\n    filtered_count = 0\n    below_threshold_count = 0\n    for video in all_videos:\n        score_result = score_video(\n            video, anime[\"title_cn\"], episode_num, aliases\n        )\n\n        if score_result[\"filtered\"]:\n            filtered_count += 1\n            logger.debug(f\"\u8fc7\u6ee4: '{video.get('title', '')}' - {score_result.get('filter_reason', '')}\")\n            continue\n\n        if score_result[\"total_score\"] >= threshold:\n            video[\"match_score\"] = score_result[\"total_score\"]\n            video[\"score_detail\"] = score_result\n            scored_videos.append(video)\n        else:\n            below_threshold_count += 1\n            logger.debug(\n                f\"\u4f4e\u5206: '{video.get('title', '')}' = {score_result['total_score']:.1f} \"\n                f\"(\u9608\u503c: {threshold})\"\n            )\n\n    logger.info(\n        f\"\u8bc4\u5206\u7ed3\u679c: {len(scored_videos)} \u901a\u8fc7, {filtered_count} \u88ab\u8fc7\u6ee4, \"\n        f\"{below_threshold_count} \u4f4e\u4e8e\u9608\u503c({threshold})\"\n    )\n\n    # \u6309\u5206\u6570\u6392\u5e8f\n    scored_videos.sort(key=lambda x: x[\"match_score\"], reverse=True)\n\n    # \u4fdd\u5b58\u5230\u6570\u636e\u5e93\n    max_sources = config.MAX_SOURCES_PER_EPISODE\n    for video in scored_videos[:max_sources]:\n        source_id = db.add_source({\n            \"episode_id\": episode[\"id\"],\n            \"video_id\": video[\"video_id\"],\n            \"title\": video.get(\"title\", \"\"),\n            \"channel_id\": video.get(\"channel_id\", \"\"),\n            \"channel_name\": video.get(\"channel_name\", \"\"),\n            \"duration\": video.get(\"duration\", 0),\n            \"view_count\": video.get(\"view_count\", 0),\n            \"published_at\": video.get(\"published_at\", \"\"),\n            \"match_score\": video[\"match_score\"],\n        })\n\n    # \u5faa\u73af\u7ed3\u675f\u540e\u7edf\u4e00\u67e5\u8be2\u4e00\u6b21\n    saved_sources = db.get_sources_for_episode(episode[\"id\"])\n\n    logger.info(\n        f\"\u4fdd\u5b58 {len(scored_videos[:max_sources])} \u4e2a\u89c6\u9891\u6e90: \"\n        f\"{anime['title_cn']} \u7b2c{episode_num}\u96c6\"\n    )\n\n    return saved_sources\n\n\ndef discover_latest_episode(anime_id: int) -> int:\n    \"\"\"\n    \u641c\u7d22\u52a8\u6f2b\u6700\u65b0\u96c6\u6570\uff08\u7528\u4e8e\u624b\u52a8\u6dfb\u52a0\u7684\u52a8\u6f2b\uff09\n\n    \u901a\u8fc7\u641c\u7d22\u52a8\u6f2b\u540d\u79f0\uff0c\u4ece\u641c\u7d22\u7ed3\u679c\u4e2d\u63d0\u53d6\u6700\u5927\u96c6\u6570\u53f7\n\n    Args:\n        anime_id: \u52a8\u6f2b ID\n\n    Returns:\n        \u53d1\u73b0\u7684\u6700\u65b0\u96c6\u6570\uff0c\u672a\u53d1\u73b0\u8fd4\u56de 0\n    \"\"\"\n    anime = db.get_anime(anime_id)\n    if not anime:\n        return 0\n\n    title = anime.get(\"title_cn\", \"\")\n    aliases = db.get_aliases(anime_id)\n    aliases.extend(db.get_global_aliases_by_title(title))\n\n    # \u641c\u7d22\u540d\u79f0\uff08\u4e0d\u5e26\u96c6\u6570\uff09\n    search_terms = [title] + aliases[:3]\n    max_ep = 0\n\n    for term in search_terms:\n        if not term:\n            continue\n        try:\n            videos = get_invidious_client().search_videos(term, max_results=50)\n            for video in videos:\n                ep = extract_episode_number(video.get(\"title\", \"\"))\n                if ep is not None and ep > max_ep:\n                    max_ep = ep\n        except Exception as e:\n            logger.error(f\"\u63a2\u6d4b\u96c6\u6570\u641c\u7d22\u5931\u8d25: {term} - {e}\")\n\n    if max_ep > 0:\n        logger.info(f\"\u63a2\u6d4b\u5230\u6700\u65b0\u96c6\u6570: {title} \u2192 \u7b2c{max_ep}\u96c6\")\n\n        # \u81ea\u52a8\u521b\u5efa\u7f3a\u5c11\u7684\u96c6\u6570\u8bb0\u5f55\n        existing_episodes = db.get_episodes(anime_id)\n        existing_nums = {ep[\"absolute_num\"] for ep in existing_episodes}\n\n        new_episodes = []\n        for i in range(1, max_ep + 1):\n            if i not in existing_nums:\n                new_episodes.append({\n                    \"absolute_num\": i,\n                    \"episode_number\": i,\n                    \"season_number\": 1,\n                })\n\n        if new_episodes:\n            db.add_episodes(anime_id, new_episodes)\n            logger.info(f\"\u81ea\u52a8\u521b\u5efa {len(new_episodes)} \u4e2a\u96c6\u6570\u8bb0\u5f55\")\n\n        # \u66f4\u65b0 total_episodes\n        db.update_anime(anime_id, {\"total_episodes\": max_ep})\n\n    return max_ep\n\n\ndef sync_anime_sources(anime_id: int) -> dict:\n    \"\"\"\n    \u540c\u6b65\u6574\u90e8\u52a8\u6f2b\u7684\u89c6\u9891\u6e90\n\n    Args:\n        anime_id: \u52a8\u6f2b ID\n\n    Returns:\n        \u540c\u6b65\u7ed3\u679c\n    \"\"\"\n    anime = db.get_anime(anime_id)\n    if not anime:\n        return {\"success\": False, \"error\": \"\u52a8\u6f2b\u4e0d\u5b58\u5728\"}\n\n    # \u63a2\u6d4b\u6700\u65b0\u96c6\u6570\uff08\u624b\u52a8\u6dfb\u52a0\u548c TMDB/Bangumi \u6dfb\u52a0\u7684\u52a8\u6f2b\u90fd\u9700\u8981\uff09\n    discovered_ep = 0\n    try:\n        discovered_ep = discover_latest_episode(anime_id)\n        if discovered_ep > 0:\n            logger.info(f\"\u63a2\u6d4b\u5230\u6700\u65b0\u96c6\u6570: {discovered_ep} \u96c6\")\n    except Exception as e:\n        logger.warning(f\"\u63a2\u6d4b\u6700\u65b0\u96c6\u6570\u5931\u8d25: {e}\")\n\n    episodes = db.get_episodes(anime_id)\n    synced = 0\n    total_sources = 0\n    lock = threading.Lock()\n\n    def _sync_one(ep):\n        \"\"\"\u540c\u6b65\u5355\u96c6\uff08\u7ebf\u7a0b\u4efb\u52a1\uff09\"\"\"\n        try:\n            sources = find_sources_for_episode(anime_id, ep[\"absolute_num\"], force=True)\n            return (ep[\"absolute_num\"], sources)\n        except Exception as e:\n            logger.error(f\"\u540c\u6b65\u5931\u8d25: {anime['title_cn']} \u7b2c{ep['absolute_num']}\u96c6 - {e}\")\n            return (ep[\"absolute_num\"], None)\n\n    # \u591a\u7ebf\u7a0b\u5e76\u53d1\u540c\u6b65\uff08\u9ed8\u8ba4 4 \u7ebf\u7a0b\uff0c\u81ea\u5efa Invidious \u65e0\u901f\u7387\u9650\u5236\uff09\n    max_workers = min(4, len(episodes)) if episodes else 1\n    with ThreadPoolExecutor(max_workers=max_workers) as executor:\n        futures = {executor.submit(_sync_one, ep): ep for ep in episodes}\n        for future in as_completed(futures):\n            ep_num, sources = future.result()\n            if sources:\n                with lock:\n                    synced += 1\n                    total_sources += len(sources)\n\n    # \u66f4\u65b0\u6700\u540e\u540c\u6b65\u65f6\u95f4\n    db.touch_anime_sync(anime_id)\n\n    # \u624b\u52a8\u52a8\u6f2b\u65e0\u5c01\u9762\u65f6\uff0c\u5c1d\u8bd5\u7528\u89c6\u9891\u7f29\u7565\u56fe\u4f5c\u4e3a\u5c01\u9762\n    anime = db.get_anime(anime_id)  # \u91cd\u65b0\u8bfb\u53d6\n    is_manual = anime.get(\"tmdb_id\") is None\n    if is_manual and not anime.get(\"poster_url\"):\n        # \u4ece\u5df2\u4fdd\u5b58\u7684\u89c6\u9891\u6e90\u4e2d\u53d6\u6700\u9ad8\u5206\u7684\u7f29\u7565\u56fe\n        for ep in episodes:\n            sources = db.get_sources_for_episode(ep.get(\"id\", 0))\n            if sources:\n                best_vid = sources[0].get(\"video_id\", \"\")\n                if best_vid:\n                    thumb_url = f\"https://img.youtube.com/vi/{best_vid}/hqdefault.jpg\"\n                    db.update_anime(anime_id, {\"poster_url\": thumb_url})\n                    logger.info(f\"\u81ea\u52a8\u8bbe\u7f6e\u5c01\u9762(\u89c6\u9891\u7f29\u7565\u56fe): {thumb_url}\")\n                    break\n\n    # \u8bb0\u5f55\u540c\u6b65\u65e5\u5fd7\n    db.add_sync_log(\n        anime_id=anime_id,\n        sync_type=\"manual\",\n        episodes_synced=synced,\n        sources_found=total_sources,\n        status=\"success\",\n        message=f\"\u540c\u6b65\u5b8c\u6210: {synced}/{len(episodes)} \u96c6\u627e\u5230\u89c6\u9891\u6e90\"\n    )\n\n    return {\n        \"success\": True,\n        \"synced_episodes\": synced,\n        \"total_sources\": total_sources,\n    }\n
+"""
+追漫阁 - 视频源查找器
+"""
+import json
+import logging
+from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+from app import config
+from app.core.invidious_client import get_invidious_client
+from app.core.matcher.scorer import score_video
+from app.core.matcher.preprocessor import normalize_text, extract_episode_number
+from app.db import database as db
+
+logger = logging.getLogger(__name__)
+
+# 手动添加动漫的匹配阈值（更宽松）
+MANUAL_MATCH_THRESHOLD = 30
+
+
+def _get_search_keywords(anime: dict, episode_num: int, aliases: list[str] = None) -> list[str]:
+    """
+    生成搜索关键词列表
+
+    Args:
+        anime: 动漫信息
+        episode_num: 目标集数
+        aliases: 已获取的别名列表（避免重复查询）
+
+    Returns:
+        关键词列表
+    """
+    title = anime.get("title_cn", "")
+
+    if aliases is None:
+        aliases = db.get_aliases(anime["id"])
+        aliases.extend(db.get_global_aliases_by_title(title))
+
+    all_names = [title] + aliases
+    # 去重
+    seen = set()
+    unique_names = []
+    for name in all_names:
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            unique_names.append(name)
+
+    keywords = []
+    for name in unique_names[:config.SEARCH_KEYWORDS_LIMIT]:
+        keywords.append(f"{name} 第{episode_num}集")
+        keywords.append(f"{name} EP{episode_num}")
+
+    return keywords
+
+
+def _apply_source_rules(videos: list[dict], anime_id: int) -> list[dict]:
+    """
+    应用搜索规则过滤
+
+    Args:
+        videos: 视频列表
+        anime_id: 动漫 ID
+
+    Returns:
+        过滤后的视频列表
+    """
+    rules = db.get_source_rules(anime_id)
+    if not rules:
+        return videos
+
+    allow_keywords = json.loads(rules.get("allow_keywords", "[]"))
+    deny_keywords = json.loads(rules.get("deny_keywords", "[]"))
+    allow_channels = json.loads(rules.get("allow_channels", "[]"))
+    deny_channels = json.loads(rules.get("deny_channels", "[]"))
+
+    filtered = []
+    for video in videos:
+        title_lower = video.get("title", "").lower()
+        channel_id = video.get("channel_id", "")
+
+        # 黑名单频道
+        if deny_channels and channel_id in deny_channels:
+            continue
+
+        # 黑名单关键词
+        if deny_keywords and any(kw.lower() in title_lower for kw in deny_keywords):
+            continue
+
+        # 白名单频道（如有设置，则只保留白名单频道）
+        if allow_channels and channel_id not in allow_channels:
+            continue
+
+        # 白名单关键词（如有设置，必须包含至少一个）
+        if allow_keywords and not any(kw.lower() in title_lower for kw in allow_keywords):
+            continue
+
+        filtered.append(video)
+
+    return filtered
+
+
+def find_sources_for_episode(
+    anime_id: int,
+    episode_num: int,
+    force: bool = False,
+) -> list[dict]:
+    """
+    查找指定集数的视频源
+
+    Args:
+        anime_id: 动漫 ID
+        episode_num: 集数
+        force: 是否强制搜索（忽略缓存）
+
+    Returns:
+        视频源列表
+    """
+    anime = db.get_anime(anime_id)
+    if not anime:
+        logger.error(f"动漫不存在: anime_id={anime_id}")
+        return []
+
+    # 获取对应集数记录
+    episode = db.get_episode_by_num(anime_id, episode_num)
+    if not episode:
+        logger.error(f"集数不存在: anime_id={anime_id}, ep={episode_num}")
+        return []
+
+    # 检查缓存（非强制模式下）
+    if not force:
+        existing_sources = db.get_sources_for_episode(episode["id"])
+        if existing_sources:
+            logger.info(f"使用缓存视频源: {anime['title_cn']} 第{episode_num}集 ({len(existing_sources)}个)")
+            return existing_sources
+
+    # 获取别名列表（一次查询，复用于关键词和评分）
+    aliases = db.get_aliases(anime_id)
+    aliases.extend(db.get_global_aliases_by_title(anime["title_cn"]))
+
+    # 生成搜索关键词
+    keywords = _get_search_keywords(anime, episode_num, aliases)
+    logger.info(f"搜索关键词: {keywords}")
+
+    # 搜索并收集所有结果
+    all_videos = []
+    seen_ids = set()
+
+    for keyword in keywords:
+        try:
+            videos = get_invidious_client().search_videos(keyword, max_results=config.MAX_SEARCH_RESULTS)
+            logger.info(f"关键词 '{keyword}' 搜索到 {len(videos)} 个视频")
+            for video in videos:
+                vid = video.get("video_id", "")
+                if vid and vid not in seen_ids:
+                    seen_ids.add(vid)
+                    all_videos.append(video)
+        except Exception as e:
+            logger.error(f"搜索关键词 '{keyword}' 出错: {type(e).__name__}: {e}")
+
+    logger.info(f"去重后找到 {len(all_videos)} 个候选视频")
+
+    # 应用搜索规则
+    all_videos = _apply_source_rules(all_videos, anime_id)
+    logger.info(f"规则过滤后: {len(all_videos)} 个视频")
+
+    # 判断是否为手动添加的动漫（使用更低阈值）
+    is_manual = anime.get("tmdb_id") is None
+    threshold = MANUAL_MATCH_THRESHOLD if is_manual else config.MATCH_THRESHOLD
+    if is_manual:
+        logger.info(f"手动添加动漫，使用宽松阈值: {threshold}")
+
+    # 评分并排序
+    scored_videos = []
+    filtered_count = 0
+    below_threshold_count = 0
+    for video in all_videos:
+        score_result = score_video(
+            video, anime["title_cn"], episode_num, aliases
+        )
+
+        if score_result["filtered"]:
+            filtered_count += 1
+            logger.debug(f"过滤: '{video.get('title', '')}' - {score_result.get('filter_reason', '')}")
+            continue
+
+        if score_result["total_score"] >= threshold:
+            video["match_score"] = score_result["total_score"]
+            video["score_detail"] = score_result
+            scored_videos.append(video)
+        else:
+            below_threshold_count += 1
+            logger.debug(
+                f"低分: '{video.get('title', '')}' = {score_result['total_score']:.1f} "
+                f"(阈值: {threshold})"
+            )
+
+    logger.info(
+        f"评分结果: {len(scored_videos)} 通过, {filtered_count} 被过滤, "
+        f"{below_threshold_count} 低于阈值({threshold})"
+    )
+
+    # 按分数排序
+    scored_videos.sort(key=lambda x: x["match_score"], reverse=True)
+
+    # 保存到数据库
+    max_sources = config.MAX_SOURCES_PER_EPISODE
+    for video in scored_videos[:max_sources]:
+        source_id = db.add_source({
+            "episode_id": episode["id"],
+            "video_id": video["video_id"],
+            "title": video.get("title", ""),
+            "channel_id": video.get("channel_id", ""),
+            "channel_name": video.get("channel_name", ""),
+            "duration": video.get("duration", 0),
+            "view_count": video.get("view_count", 0),
+            "published_at": video.get("published_at", ""),
+            "match_score": video["match_score"],
+        })
+
+    # 循环结束后统一查询一次
+    saved_sources = db.get_sources_for_episode(episode["id"])
+
+    logger.info(
+        f"保存 {len(scored_videos[:max_sources])} 个视频源: "
+        f"{anime['title_cn']} 第{episode_num}集"
+    )
+
+    return saved_sources
+
+
+def discover_latest_episode(anime_id: int) -> int:
+    """
+    搜索动漫最新集数
+
+    通过搜索动漫名称，从搜索结果中提取最大集数号
+
+    Args:
+        anime_id: 动漫 ID
+
+    Returns:
+        发现的最新集数，未发现返回 0
+    """
+    anime = db.get_anime(anime_id)
+    if not anime:
+        return 0
+
+    title = anime.get("title_cn", "")
+    aliases = db.get_aliases(anime_id)
+    aliases.extend(db.get_global_aliases_by_title(title))
+
+    # 搜索名称（不带集数）
+    search_terms = [title] + aliases[:3]
+    max_ep = 0
+
+    for term in search_terms:
+        if not term:
+            continue
+        try:
+            videos = get_invidious_client().search_videos(term, max_results=50)
+            for video in videos:
+                ep = extract_episode_number(video.get("title", ""))
+                if ep is not None and ep > max_ep:
+                    max_ep = ep
+        except Exception as e:
+            logger.error(f"探测集数搜索失败: {term} - {e}")
+
+    if max_ep > 0:
+        logger.info(f"探测到最新集数: {title} → 第{max_ep}集")
+
+        # 自动创建缺少的集数记录
+        existing_episodes = db.get_episodes(anime_id)
+        existing_nums = {ep["absolute_num"] for ep in existing_episodes}
+
+        new_episodes = []
+        for i in range(1, max_ep + 1):
+            if i not in existing_nums:
+                new_episodes.append({
+                    "absolute_num": i,
+                    "episode_number": i,
+                    "season_number": 1,
+                })
+
+        if new_episodes:
+            db.add_episodes(anime_id, new_episodes)
+            logger.info(f"自动创建 {len(new_episodes)} 个集数记录")
+
+        # 更新 total_episodes
+        db.update_anime(anime_id, {"total_episodes": max_ep})
+
+    return max_ep
+
+
+def sync_anime_sources(anime_id: int) -> dict:
+    """
+    同步整部动漫的视频源
+
+    Args:
+        anime_id: 动漫 ID
+
+    Returns:
+        同步结果
+    """
+    anime = db.get_anime(anime_id)
+    if not anime:
+        return {"success": False, "error": "动漫不存在"}
+
+    # 探测最新集数（手动添加和 TMDB/Bangumi 添加的动漫都需要）
+    discovered_ep = 0
+    try:
+        discovered_ep = discover_latest_episode(anime_id)
+        if discovered_ep > 0:
+            logger.info(f"探测到最新集数: {discovered_ep} 集")
+    except Exception as e:
+        logger.warning(f"探测最新集数失败: {e}")
+
+    episodes = db.get_episodes(anime_id)
+    synced = 0
+    total_sources = 0
+    lock = threading.Lock()
+
+    def _sync_one(ep):
+        """同步单集（线程任务）"""
+        try:
+            sources = find_sources_for_episode(anime_id, ep["absolute_num"], force=True)
+            return (ep["absolute_num"], sources)
+        except Exception as e:
+            logger.error(f"同步失败: {anime['title_cn']} 第{ep['absolute_num']}集 - {e}")
+            return (ep["absolute_num"], None)
+
+    # 多线程并发同步（默认 4 线程，自建 Invidious 无速率限制）
+    max_workers = min(4, len(episodes)) if episodes else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_sync_one, ep): ep for ep in episodes}
+        for future in as_completed(futures):
+            ep_num, sources = future.result()
+            if sources:
+                with lock:
+                    synced += 1
+                    total_sources += len(sources)
+
+    # 更新最后同步时间
+    db.touch_anime_sync(anime_id)
+
+    # 手动动漫无封面时，尝试用视频缩略图作为封面
+    anime = db.get_anime(anime_id)  # 重新读取
+    is_manual = anime.get("tmdb_id") is None
+    if is_manual and not anime.get("poster_url"):
+        # 从已保存的视频源中取最高分的缩略图
+        for ep in episodes:
+            sources = db.get_sources_for_episode(ep.get("id", 0))
+            if sources:
+                best_vid = sources[0].get("video_id", "")
+                if best_vid:
+                    thumb_url = f"https://img.youtube.com/vi/{best_vid}/hqdefault.jpg"
+                    db.update_anime(anime_id, {"poster_url": thumb_url})
+                    logger.info(f"自动设置封面(视频缩略图): {thumb_url}")
+                    break
+
+    # 记录同步日志
+    db.add_sync_log(
+        anime_id=anime_id,
+        sync_type="manual",
+        episodes_synced=synced,
+        sources_found=total_sources,
+        status="success",
+        message=f"同步完成: {synced}/{len(episodes)} 集找到视频源"
+    )
+
+    return {
+        "success": True,
+        "synced_episodes": synced,
+        "total_sources": total_sources,
+    }
