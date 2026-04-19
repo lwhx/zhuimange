@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}{{ anime.title_cn }} - 追漫阁{% endblock %}
+
+{% block content %}
+<!-- 面包屑 -->
+<div class="breadcrumb">
+    <a href="/" class="breadcrumb__link">← 返回首页</a>
+</div>
+
+<!-- 动漫信息 -->
+<div class="anime-detail">
+    <div class="anime-detail__poster">
+        {% if anime.poster_url %}
+        <img src="{{ anime.poster_url }}" alt="{{ anime.title_cn }}">
+        {% else %}
+        <div
+            style="width:100%;aspect-ratio:2/3;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;font-size:3rem;">
+            🎬</div>
+        {% endif %}
+    </div>
+
+    <div class="anime-detail__info">
+        <h1 class="anime-detail__title">{{ anime.title_cn }}</h1>
+
+        {% if anime.title_en %}
+        <div style="color:var(--text-muted);font-size:0.9rem;margin-top:-8px;">{{ anime.title_en }}</div>
+        {% endif %}
+
+        <div class="anime-detail__meta">
+            <div class="anime-detail__meta-item">
+                📅 <span>{{ anime.air_date or '未知' }}</span>
+            </div>
+            <div class="anime-detail__meta-item">
+                📺 <span><strong>{{ anime.episodes|length }}</strong> 集</span>
+            </div>
+            <div class="anime-detail__meta-item">
+                👁️ <span>已看 <strong id="progress-text">{{ anime.watched_ep or 0 }}/{{ anime.episodes|length
+                        }}</strong></span>
+            </div>
+            <div class="anime-detail__meta-item">
+                {% if anime.status == 'Returning Series' %}
+                🟢 连载中
+                {% elif anime.status == 'Ended' %}
+                🔴 已完结
+                {% else %}
+                ⚪ {{ anime.status }}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div style="margin-top:4px;">
+            <div class="anime-card__progress-bar" style="height:6px;">
+                <div class="anime-card__progress-fill" id="progress-fill"
+                    style="width: {{ ((anime.watched_ep or 0) / (anime.episodes|length or 1) * 100)|int }}%"></div>
+            </div>
+        </div>
+
+        {% if anime.overview %}
+        <p class="anime-detail__overview">{{ anime.overview }}</p>
+        {% endif %}
+
+        <!-- 别名 -->
+        {% if anime.aliases %}
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            {% for alias in anime.aliases %}
+            <span
+                style="padding:3px 10px;background:var(--bg-input);border-radius:var(--radius-xl);font-size:0.78rem;color:var(--text-muted);">{{
+                alias }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- 操作按钮 -->
+        <div class="anime-detail__actions">
+            <button type="button" class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{ anime.id }})">🔄 同步视频源</button>
+            <!-- 同步进度条 -->
+            <div id="sync-progress" style="display:none;flex:1;min-width:200px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="anime-card__progress-bar" style="flex:1;height:6px;">
+                        <div id="sync-progress-fill" class="anime-card__progress-fill"
+                            style="width:0%;transition:width 0.3s;"></div>
+                    </div>
+                    <span id="sync-progress-text"
+                        style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">0/0</span>
+                </div>
+            </div>
+            <button type="button" class="btn btn--secondary btn--sm"
+                onclick="document.getElementById('progress-section').classList.toggle('visible')">📊 更新进度</button>
+            <button type="button" class="btn btn--secondary btn--sm"
+                onclick="document.getElementById('rules-section').classList.toggle('visible')">⚙️ 搜索规则</button>
+            <button type="button" class="btn btn--secondary btn--sm"
+                onclick="document.getElementById('alias-section').classList.toggle('visible')">🏷️ 管理别名</button>
+            <button type="button" class="btn btn--danger btn--sm" onclick="deleteAnime({{ anime.id }})">🗑️ 删除</button>
+        </div>
+
+        <!-- 快速更新进度 -->
+        <div id="progress-section" class="manual-add-form" style="margin-top:0;">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">看到第</label>
+                <input type="number" id="progress-input" value="{{ anime.watched_ep or 0 }}" min="0"
+                    max="{{ anime.episodes|length }}"
+                    style="width:80px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+                <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">集</label>
+                <button type="button" class="btn btn--primary btn--sm" onclick="updateProgress({{ anime.id }})">更新</button>
+            </div>
+        </div>
+
+        <!-- 搜索规则 -->
+        <div id="rules-section" class="manual-add-form" style="margin-top:0;">
+            <h4 style="margin-bottom:12px;font-size:0.95rem;">搜索规则</h4>
+            <div class="form-group">
+                <label>允许关键词（逗号分隔）</label>
+                <input type="text" id="rule-allow-keywords"
+                    value="{{ (anime.rules.allow_keywords if anime.rules else '')|replace('[', '')|replace(']', '')|replace('\"', '') }}"
+                       placeholder="例: 官方, 正版">
+            </div>
+            <div class="form-group">
+                <label>屏蔽关键词（逗号分隔）</label>
+                <input type="text" id="rule-deny-keywords"
+                       value="{{ (anime.rules.deny_keywords if anime.rules else '')|replace(' [', '' )|replace(']', ''
+                    )|replace('\"', '' ) }}" placeholder="例: 剪辑, 解说">
+            </div>
+            <div class="form-group">
+                <label>允许频道 ID（逗号分隔）</label>
+                <input type="text" id="rule-allow-channels"
+                    value="{{ (anime.rules.allow_channels if anime.rules else '')|replace('[', '')|replace(']', '')|replace('\"', '') }}">
+            </div>
+            <div class="form-group">
+                <label>屏蔽频道 ID（逗号分隔）</label>
+                <input type="text" id="rule-deny-channels"
+                       value="{{ (anime.rules.deny_channels if anime.rules else '')|replace(' [', '' )|replace(']', ''
+                    )|replace('\"', '' ) }}">
+            </div>
+            <button type="button" class="btn btn--primary btn--sm" onclick="saveRules({{ anime.id }})">保存规则</button>
+        </div>
+
+        <!-- 别名管理 -->
+        <div id="alias-section" class="manual-add-form" style="margin-top:0;">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="alias-input" placeholder="输入新别名"
+                    style="flex:1;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+                <button type="button" class="btn btn--primary btn--sm" onclick="addAlias({{ anime.id }})">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 集数列表 -->
+<div class="episodes-section">
+    <div class="episodes-section__header">
+        <h2 class="episodes-section__title">集数列表</h2>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span style="color:var(--text-muted);font-size:0.85rem;">
+                {{ anime.unwatched_count }} 集未看
+            </span>
+            <button type="button" class="btn btn--secondary btn--sm" id="sort-toggle-btn" onclick="toggleEpisodeSort()" aria-label="切换集数排序" title="切换排序">
+                {% if anime.sort_order == 'desc' %}↓ 倒序{% else %}↑ 正序{% endif %}
+            </button>
+        </div>
+    </div>
+
+    {% if anime.episodes|length > 0 %}
+    <div class="episodes-grid">
+        {% for ep in anime.episodes %}
+        <div class="episode-item {% if ep.watched %}episode-item--watched{% endif %}" data-ep="{{ ep.absolute_num }}">
+            <div class="episode-item__num">
+                {{ ep.absolute_num }}
+            </div>
+            <div class="episode-item__info">
+                <div class="episode-item__title">
+                    {% if ep.title %}{{ ep.title }}{% else %}第{{ ep.absolute_num }}集{% endif %}
+                </div>
+                <div class="episode-item__date">
+                    {% if ep.air_date %}{{ ep.air_date }}{% endif %}
+                    {% if ep.source_count > 0 %}
+                    · {{ ep.source_count }} 个视频源
+                    {% endif %}
+                </div>
+            </div>
+            <div class="episode-item__actions">
+                <button type="button" class="btn btn--sm btn--secondary"
+                    onclick="openSourcesModal({{ anime.id }}, {{ ep.absolute_num }})"
+                    aria-label="查看第{{ ep.absolute_num }}集视频源" title="查看视频源">
+                    🎬
+                </button>
+                <button type="button" class="btn btn--sm btn--success"
+                    onclick="markWatched({{ anime.id }}, {{ ep.absolute_num }})"
+                    aria-label="标记第{{ ep.absolute_num }}集已看" title="标记已看"{% if ep.watched %} style="display: none;"{% endif %}>
+                    ✓
+                </button>
+                <button type="button" class="btn btn--sm btn--secondary"
+                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }})"
+                    aria-label="取消第{{ ep.absolute_num }}集已看" title="标记未看"{% if not ep.watched %} style="display: none;"{% endif %}>
+                    ↩️
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state__icon">📋</div>
+        <div class="empty-state__title">暂无集数信息</div>
+        <div class="empty-state__desc">尝试同步视频源以获取集数数据</div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

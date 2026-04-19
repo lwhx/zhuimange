@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}观看统计 - 追漫阁{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-header__title">观看统计</h1>
+    <p class="page-header__subtitle">追番数据一览</p>
+</div>
+
+<!-- 概要卡片 -->
+<div class="stats-cards">
+    <div class="stats-card">
+        <div class="stats-card__icon">📺</div>
+        <div class="stats-card__value">{{ stats.total_animes }}</div>
+        <div class="stats-card__label">追番总数</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-card__icon">✅</div>
+        <div class="stats-card__value">{{ stats.watched_episodes }}</div>
+        <div class="stats-card__label">已看集数</div>
+    </div>
+    <div class="stats-card stats-card--accent">
+        <div class="stats-card__icon">⏱️</div>
+        <div class="stats-card__value">{{ stats.estimated_hours }}</div>
+        <div class="stats-card__label">预计时长（小时）</div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-card__icon">📈</div>
+        <div class="stats-card__value">{{ stats.completion_rate }}%</div>
+        <div class="stats-card__label">集数完成率</div>
+    </div>
+</div>
+
+<!-- 双列图表区 -->
+<div class="stats-grid">
+
+    <!-- 追番状态分布 -->
+    <div class="stats-section">
+        <h3 class="stats-section__title">追番状态分布</h3>
+        {% if stats.status_dist %}
+            {% for item in stats.status_dist %}
+            <div class="stat-bar-row">
+                <span class="stat-bar-row__label">{{ item.label }}</span>
+                <div class="stat-bar-row__track">
+                    <div class="stat-bar-row__fill"
+                         style="width: {{ (item.count / stats.total_animes * 100)|int if stats.total_animes > 0 else 0 }}%"></div>
+                </div>
+                <span class="stat-bar-row__value">{{ item.count }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="stats-empty">暂无数据</div>
+        {% endif %}
+    </div>
+
+    <!-- 近14天同步活动 -->
+    <div class="stats-section">
+        <h3 class="stats-section__title">近 14 天同步活动</h3>
+        {% if stats.sync_activity %}
+        <div class="activity-chart">
+            {% for day in stats.sync_activity %}
+            <div class="activity-chart__col"
+                 title="{{ day.date }}: {{ day.syncs }} 次同步，{{ day.sources }} 个视频源">
+                <div class="activity-chart__bar"
+                     style="height: {{ [((day.syncs / stats.max_sync_count) * 100)|int, 4]|max }}%"></div>
+                <div class="activity-chart__label">{{ day.date[5:] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+            <div class="stats-empty">暂无同步记录</div>
+        {% endif %}
+    </div>
+
+</div>
+
+<!-- 完成度排行 -->
+{% if stats.top_progress %}
+<div class="stats-section" style="margin-top: 24px;">
+    <h3 class="stats-section__title">完成度 TOP 10</h3>
+    {% for anime in stats.top_progress %}
+    <div class="progress-row">
+        <a href="/anime/{{ anime.id }}" class="progress-row__title">{{ anime.title_cn }}</a>
+        <div class="progress-row__track">
+            <div class="progress-row__fill" style="width: {{ anime.pct }}%"></div>
+        </div>
+        <span class="progress-row__meta">
+            {{ anime.watched_count }}/{{ anime.ep_count }}
+            <em>{{ anime.pct }}%</em>
+        </span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 待追最多 -->
+{% if stats.most_pending %}
+<div class="stats-section" style="margin-top: 24px;">
+    <h3 class="stats-section__title">待追最多</h3>
+    <div class="pending-list">
+        {% for anime in stats.most_pending %}
+        <a href="/anime/{{ anime.id }}" class="pending-item">
+            <span class="pending-item__title">{{ anime.title_cn }}</span>
+            <span class="pending-item__badge">{{ anime.unwatched }} 集未看</span>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

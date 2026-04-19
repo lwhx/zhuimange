@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}追漫阁 - 首页{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-header__title">我的追更</h1>
+    <p class="page-header__subtitle">共 {{ animes|length }} 部动漫</p>
+</div>
+
+<!-- 搜索框 -->
+<div class="search-box">
+    <span class="search-box__icon">🔍</span>
+    <input type="text" id="search-input" class="search-box__input" placeholder="搜索动漫并添加..." autocomplete="off">
+    <button id="search-clear" class="search-box__clear">&times;</button>
+    <div id="search-results" class="search-results"></div>
+</div>
+<div class="search-source-tabs" style="margin-top:-20px;margin-bottom:24px;display:flex;gap:8px;">
+    <button type="button" class="search-source-tab active" data-source="tmdb" onclick="setSearchSource('tmdb')">TMDB</button>
+    <button type="button" class="search-source-tab" data-source="bangumi" onclick="setSearchSource('bangumi')">Bangumi.tv</button>
+</div>
+
+<!-- 手动添加按钮 -->
+<div style="margin-bottom: 24px;">
+    <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">
+        ✏️ 手动添加动漫
+    </button>
+</div>
+
+<!-- 手动添加表单 -->
+<div id="manual-add-form" class="manual-add-form">
+    <h3 style="margin-bottom:16px;font-size:1.05rem;">手动添加动漫</h3>
+    <div class="form-group">
+        <label>动漫名称 *</label>
+        <input type="text" id="manual-title" placeholder="例: 斗破苍穹">
+    </div>
+    <div class="form-group">
+        <label>总集数</label>
+        <input type="number" id="manual-total-ep" placeholder="例: 24" min="0">
+    </div>
+    <div class="form-group">
+        <label>别名（逗号分隔）</label>
+        <input type="text" id="manual-aliases" placeholder="例: BTTH, Battle Through the Heavens">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn--primary btn--sm" onclick="submitManualAdd()">添加</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">取消</button>
+    </div>
+</div>
+
+<!-- 筛选标签 -->
+{% if animes|length > 0 %}
+<div class="filter-tabs">
+    <button type="button" class="filter-tab active" onclick="filterAnimes('all')">全部</button>
+    <button type="button" class="filter-tab" onclick="filterAnimes('airing')">连载中</button>
+    <button type="button" class="filter-tab" onclick="filterAnimes('ended')">已完结</button>
+    <button type="button" class="filter-tab" onclick="filterAnimes('unwatched')">有更新</button>
+</div>
+{% endif %}
+
+<!-- 动漫卡片网格 -->
+{% if animes|length > 0 %}
+<div class="anime-grid">
+    {% for anime in animes %}
+    <a href="/anime/{{ anime.id }}" class="anime-card" data-status="{{ anime.status }}"
+        data-unwatched="{{ anime.unwatched_count }}">
+        <div class="anime-card__poster-wrap">
+            {% if anime.poster_url %}
+            <img class="anime-card__poster" src="{{ anime.poster_url }}" alt="{{ anime.title_cn }}" loading="lazy"
+                onerror="this.style.display='none'">
+            {% endif %}
+
+            {% if anime.unwatched_count > 0 %}
+            <span class="anime-card__badge anime-card__badge--new">{{ anime.unwatched_count }}集更新</span>
+            {% elif anime.status == 'Returning Series' %}
+            <span class="anime-card__badge anime-card__badge--airing">连载中</span>
+            {% elif anime.status == 'Ended' %}
+            <span class="anime-card__badge anime-card__badge--ended">已完结</span>
+            {% endif %}
+        </div>
+        <div class="anime-card__body">
+            <div class="anime-card__title" title="{{ anime.title_cn }}">{{ anime.title_cn }}</div>
+            <div class="anime-card__progress">
+                <div class="anime-card__progress-bar">
+                    <div class="anime-card__progress-fill"
+                        style="width: {{ ((anime.watched_ep or 0) / (anime.episode_count or 1) * 100)|int }}%"></div>
+                </div>
+                <span class="anime-card__progress-text">{{ anime.watched_ep or 0 }}/{{ anime.episode_count or
+                    anime.total_episodes or '?' }}</span>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="empty-state__icon">📺</div>
+    <div class="empty-state__title">还没有追更的动漫</div>
+    <div class="empty-state__desc">使用上方搜索框从 TMDB 搜索并添加你喜欢的国漫</div>
+</div>
+{% endif %}
+{% endblock %}

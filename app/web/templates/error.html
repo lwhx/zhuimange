@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}错误 {{ code }} - 追漫阁{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="error-page__icon">
+        {% if code == 404 %}
+        🔍
+        {% elif code == 429 %}
+        ⏱️
+        {% elif code == 500 %}
+        💥
+        {% else %}
+        ⚠️
+        {% endif %}
+    </div>
+    <h1 class="error-page__code">{{ code }}</h1>
+    <p class="error-page__message">{{ error }}</p>
+    <div class="error-page__actions">
+        <a href="/" class="btn btn--primary">返回首页</a>
+        <button onclick="history.back()" class="btn btn--secondary">返回上页</button>
+    </div>
+</div>
+
+<style>
+.error-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.error-page__icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.error-page__code {
+    font-size: 72px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1;
+}
+
+.error-page__message {
+    font-size: 18px;
+    color: var(--text-secondary);
+    margin: 16px 0 32px;
+}
+
+.error-page__actions {
+    display: flex;
+    gap: 12px;
+}
+</style>
+{% endblock %}
