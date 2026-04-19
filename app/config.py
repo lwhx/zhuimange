@@ -35,12 +35,12 @@ TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 TMDB_LANGUAGE = os.getenv("TMDB_LANGUAGE", "zh-CN")
 
 # ==================== Invidious 配置 ====================
-INVIDIOUS_URL = os.getenv("INVIDIOUS_URL", "https://invidious.snopyta.org")
+INVIDIOUS_URL = os.getenv("INVIDIOUS_URL", "https://inv.nadeko.net")
 INVIDIOUS_API_TIMEOUT = int(os.getenv("INVIDIOUS_API_TIMEOUT", "30"))
 INVIDIOUS_FALLBACK_URLS = [
-    "https://invidious.snopyta.org",
+    "https://inv.nadeko.net",
+    "https://invidious.nerdvpn.de",
     "https://yewtu.be",
-    "https://invidious.kavin.rocks",
 ]
 
 # ==================== 匹配算法参数 ====================
@@ -78,27 +78,3 @@ DONGHUA_ALIASES: dict[str, list[str]] = {
     "秦时明月": ["秦时明月动画", "Qin's Moon"],
     "少年歌行": ["少年歌行动画", "The Young Brewmaster's Adventure"],
     "眷思量": ["眷思量动画"],
-    "百炼成神": ["百炼成神动画"],
-    "万界独尊": ["万界独尊动画"],
-    "元龙": ["元龙动画"],
-    "师兄啊师兄": ["师兄啊师兄动画"],
-}
-
-# ==================== 排除关键词 ====================
-EXCLUDE_KEYWORDS: list[str] = [
-    "预告", "PV", "CM", "宣传", "先行", "特别篇花絮",
-    "合集", "全集", "混剪", "剪辑", "cut",
-    "解说", "评价", "吐槽", "盘点", "react", "reaction",
-    "教程", "教学", "攻略",
-    "AMV", "MAD", "同人",
-    "片尾曲", "片头曲", "OP", "ED", "OST", "BGM",
-    "拉片", "分析", "科普",
-]
-
-# ==================== 缓存配置 ====================
-SOURCE_CACHE_DAYS = 7
-SYNC_LOG_KEEP_DAYS = 90
-
-# ==================== Telegram 推送 ====================
-TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
-TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
