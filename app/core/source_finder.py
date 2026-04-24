@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from app import config
 from app.core.invidious_client import get_invidious_client
+from app.core.tmdb_client import get_tmdb_client
 from app.core.matcher.scorer import score_video
 from app.core.matcher.preprocessor import normalize_text, extract_episode_number
 from app.db import database as db
@@ -256,13 +257,41 @@ def discover_latest_episode(anime_id: int) -> int:
         if not term:
             continue
         try:
+            # 按相关性搜索
             videos = get_invidious_client().search_videos(term, max_results=50)
             for video in videos:
                 ep = extract_episode_number(video.get("title", ""))
                 if ep is not None and ep > max_ep:
                     max_ep = ep
+
+            # 按日期搜索（更容易找到最新集数）
+            videos_by_date = get_invidious_client().search_videos(term, max_results=30, sort_by="date")
+            for video in videos_by_date:
+                ep = extract_episode_number(video.get("title", ""))
+                if ep is not None and ep > max_ep:
+                    max_ep = ep
         except Exception as e:
             logger.error(f"探测集数搜索失败: {term} - {e}")
+
+    # 针对性搜索更高集数（max_ep+1 到 max_ep+10）
+    if max_ep > 0:
+        for offset in range(1, 11):
+            target_ep = max_ep + offset
+            try:
+                keyword = f"{title} 第{target_ep}集"
+                videos = get_invidious_client().search_videos(keyword, max_results=5)
+                found = False
+                for video in videos:
+                    ep = extract_episode_number(video.get("title", ""))
+                    if ep is not None and ep == target_ep:
+                        max_ep = target_ep
+                        found = True
+                        break
+                if not found:
+                    break
+            except Exception as e:
+                logger.error(f"探测集数搜索失败: 第{target_ep}集 - {e}")
+                break
 
     if max_ep > 0:
         logger.info(f"探测到最新集数: {title} → 第{max_ep}集")
@@ -304,7 +333,28 @@ def sync_anime_sources(anime_id: int) -> dict:
     if not anime:
         return {"success": False, "error": "动漫不存在"}
 
-    # 探测最新集数（手动添加和 TMDB/Bangumi 添加的动漫都需要）
+    # TMDB 添加的动漫：先从 TMDB 更新集数
+    tmdb_id = anime.get("tmdb_id")
+    if tmdb_id:
+        try:
+            detail = get_tmdb_client().get_anime_detail(tmdb_id)
+            if detail and detail.get("seasons"):
+                episodes = get_tmdb_client().get_all_episodes(tmdb_id, detail["seasons"])
+                if episodes:
+                    existing_episodes = db.get_episodes(anime_id)
+                    existing_nums = {ep["absolute_num"] for ep in existing_episodes}
+                    new_episodes = []
+                    for ep in episodes:
+                        if ep.get("absolute_num", 0) not in existing_nums:
+                            new_episodes.append(ep)
+                    if new_episodes:
+                        db.add_episodes(anime_id, new_episodes)
+                        logger.info(f"TMDB 更新: 新增 {len(new_episodes)} 个集数记录")
+                    db.update_anime(anime_id, {"total_episodes": detail.get("total_episodes", 0)})
+        except Exception as e:
+            logger.warning(f"TMDB 集数更新失败: {e}")
+
+    # 探测最新集数（补充 TMDB 未收录的集数）
     discovered_ep = 0
     try:
         discovered_ep = discover_latest_episode(anime_id)

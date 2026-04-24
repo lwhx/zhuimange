@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(wc -l /e/qb/trae/29/zhuimange/app/core/*.py)",
-      "Bash(find /e/qb/trae/29/zhuimange -type f -name \"*.py\" -exec wc -l {} +)"
-    ]
-  }
-}

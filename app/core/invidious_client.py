@@ -91,13 +91,14 @@ class InvidiousClient:
                 logger.error(f"Invidious 重试失败: {url} - {e2}")
                 raise
 
-    def search_videos(self, query: str, max_results: int = 20) -> list[dict]:
+    def search_videos(self, query: str, max_results: int = 20, sort_by: str = "relevance") -> list[dict]:
         """
         搜索视频
 
         Args:
             query: 搜索关键词
             max_results: 最大结果数
+            sort_by: 排序方式 (relevance, date, view_count, rating)
 
         Returns:
             视频列表
@@ -107,7 +108,7 @@ class InvidiousClient:
             results = self._request("/api/v1/search", {
                 "q": query,
                 "type": "video",
-                "sort_by": "relevance",
+                "sort_by": sort_by,
             })
 
             if not isinstance(results, list):

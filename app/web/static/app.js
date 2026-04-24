@@ -182,18 +182,6 @@ async function apiRequest(url, options = {}) {
 // ==================== 搜索功能 ====================
 
 let searchTimer = null;
-let currentSearchSource = 'tmdb';
-
-function setSearchSource(source) {
-    currentSearchSource = source;
-    document.querySelectorAll('.search-source-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.source === source);
-    });
-    const input = document.getElementById('search-input');
-    if (input && input.value.trim().length >= 2) {
-        searchAnime(input.value.trim());
-    }
-}
 
 function initSearch() {
     const input = document.getElementById('search-input');
@@ -235,17 +223,16 @@ async function searchAnime(query) {
     results.classList.add('visible');
 
     try {
-        const url = `/api/search?q=${encodeURIComponent(query)}&source=${currentSearchSource}`;
-        const data = await apiRequest(url);
-        if (data.length === 0) {
+        const url = `/api/search?q=${encodeURIComponent(query)}`;
+        const resp = await apiRequest(url);
+        const items = resp.data || resp;
+        if (items.length === 0) {
             results.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">没有找到相关动漫</div>';
             return;
         }
 
-        results.innerHTML = data.map(item => {
-            const isBangumi = currentSearchSource === 'bangumi';
-            const id = isBangumi ? item.bangumi_id : item.tmdb_id;
-            const addFn = isBangumi ? `addAnimeBangumi(${id})` : `addAnime(${id})`;
+        results.innerHTML = items.map(item => {
+            const id = item.tmdb_id;
             return `
             <div class="search-result-item" data-id="${id}">
                 <img class="search-result-item__poster"
@@ -257,34 +244,16 @@ async function searchAnime(query) {
                     <div class="search-result-item__meta">
                         ${item.title_en ? escapeHtml(item.title_en) + ' · ' : ''}
                         ${escapeHtml(item.air_date || '未知')} · ${item.total_episodes || '?'}集
-                        ${isBangumi ? ' · <span style="color:var(--accent-light);font-size:0.75rem;">Bangumi</span>' : ''}
                     </div>
                 </div>
                 <button type="button" class="search-result-item__add-btn"
-                        onclick="event.stopPropagation(); ${addFn}">
+                        onclick="event.stopPropagation(); addAnime(${id})">
                     + 添加
                 </button>
             </div>`;
         }).join('');
     } catch (err) {
         results.innerHTML = '<div style="padding:16px;color:var(--danger);text-align:center;">搜索失败</div>';
-    }
-}
-
-async function addAnimeBangumi(bangumiId) {
-    try {
-        const data = await apiRequest('/api/anime/add_bangumi', {
-            method: 'POST',
-            body: JSON.stringify({ bangumi_id: bangumiId }),
-        });
-        ToastManager.success('添加成功（Bangumi）！');
-        const animeId = data.data.anime_id;
-        const animeData = await apiRequest(`/api/anime/${animeId}`);
-        createAnimeCard(animeData.data);
-        document.getElementById('search-results').classList.remove('visible');
-        document.getElementById('search-input').value = '';
-    } catch (err) {
-        // error already shown by apiRequest
     }
 }
 
@@ -618,6 +587,7 @@ function syncAnime(animeId) {
                 btn.disabled = false;
                 btn.textContent = '🔄 同步视频源';
                 progressDiv.style.display = 'none';
+                location.reload();
             }, 2000);
         }
         // 错误

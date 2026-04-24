@@ -308,9 +308,7 @@ def _register_routes(app: Flask):
         stats = get_watch_stats()
         return render_template('stats.html', stats=stats)
 
-    @app.route('/theme-preview')
-    def theme_preview_page():
-        return render_template('theme_preview.html')
+
 
 
 def _register_health_endpoints(app: Flask):

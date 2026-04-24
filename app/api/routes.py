@@ -7,7 +7,6 @@ from datetime import date, datetime
 from flask import Blueprint, request, jsonify, current_app
 from app.db import database as db
 from app.core.tmdb_client import get_tmdb_client
-from app.core.bangumi_client import get_bangumi_client
 from app.core.source_finder import find_sources_for_episode, sync_anime_sources
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
 from app.core.response import success_response, error_response
@@ -46,16 +45,12 @@ def health_check():
 
 @api.route('/search')
 def search_anime():
-    """搜索动漫 (TMDB + Bangumi 双源)"""
+    """搜索动漫"""
     query = request.args.get('q', '').strip()
-    source = request.args.get('source', 'tmdb')  # tmdb | bangumi
     if not query:
         return error_response("请输入搜索关键词")
 
-    if source == 'bangumi':
-        results = get_bangumi_client().search_anime(query)
-    else:
-        results = get_tmdb_client().search_anime(query)
+    results = get_tmdb_client().search_anime(query)
     return success_response(results, message="搜索完成")
 
 
@@ -91,33 +86,6 @@ def add_anime():
     _clear_anime_cache()
     return success_response({"anime_id": anime_id}, message="动漫添加成功")
 
-
-
-@api.route('/anime/add_bangumi', methods=['POST'])
-def add_anime_bangumi():
-    """从 Bangumi.tv 添加动漫"""
-    data = request.json or {}
-    bangumi_id = data.get('bangumi_id')
-    if not bangumi_id:
-        return error_response("缺少 bangumi_id")
-
-    existing = db.get_anime_by_bangumi_id(bangumi_id)
-    if existing:
-        return error_response("该动漫已添加", code="ANIME_EXISTS")
-
-    detail = get_bangumi_client().get_anime_detail(bangumi_id)
-    if not detail:
-        return error_response("无法获取动漫信息", code="BANGUMI_ERROR", status_code=500)
-
-    detail["bangumi_id"] = bangumi_id
-    anime_id = db.add_anime(detail)
-
-    episodes = get_bangumi_client().get_episodes(bangumi_id)
-    if episodes:
-        db.add_episodes(anime_id, episodes)
-
-    _clear_anime_cache()
-    return success_response({"anime_id": anime_id}, message="动漫添加成功（Bangumi）")
 
 
 @api.route('/anime/add_manual', methods=['POST'])
@@ -317,10 +285,34 @@ def sync_anime_stream(anime_id):
 
     def generate():
         from app.core.source_finder import find_sources_for_episode, discover_latest_episode
+        from app.core.tmdb_client import get_tmdb_client
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         try:
             is_manual = anime.get("tmdb_id") is None
+
+            # ===== 阶段 0: TMDB 动漫更新集数 =====
+            tmdb_id = anime.get("tmdb_id")
+            if tmdb_id:
+                yield f"data: {_json.dumps({'type': 'discovering', 'message': '正在从 TMDB 更新集数...'}, ensure_ascii=False)}\n\n"
+                try:
+                    detail = get_tmdb_client().get_anime_detail(tmdb_id)
+                    if detail and detail.get("seasons"):
+                        tmdb_episodes = get_tmdb_client().get_all_episodes(tmdb_id, detail["seasons"])
+                        if tmdb_episodes:
+                            existing_episodes = db.get_episodes(anime_id)
+                            existing_nums = {ep["absolute_num"] for ep in existing_episodes}
+                            new_episodes = []
+                            for ep in tmdb_episodes:
+                                if ep.get("absolute_num", 0) not in existing_nums:
+                                    new_episodes.append(ep)
+                            if new_episodes:
+                                db.add_episodes(anime_id, new_episodes)
+                                logger.info(f"TMDB 更新: 新增 {len(new_episodes)} 个集数记录")
+                            db.update_anime(anime_id, {"total_episodes": detail.get("total_episodes", 0)})
+                            yield f"data: {_json.dumps({'type': 'discover_info', 'discovered': len(new_episodes)}, ensure_ascii=False)}\n\n"
+                except Exception as e:
+                    logger.warning(f"TMDB 集数更新失败: {e}")
 
             # ===== 阶段 1: 手动动漫实时探测集数 =====
             if is_manual:

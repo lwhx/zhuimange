@@ -17,7 +17,7 @@ DB_PATH: Optional[str] = None
 _ANIME_UPDATABLE_FIELDS = frozenset({
     "title_cn", "title_en", "poster_url", "overview",
     "total_episodes", "watched_ep", "status", "sync_interval",
-    "last_sync_at", "bangumi_id",
+    "last_sync_at",
 })
 
 # 简易连接池（线程安全）
@@ -241,12 +241,6 @@ def init_db(use_migrations: Optional[bool] = None) -> None:
             UNIQUE(title, alias)
         )''')
 
-        # 升级：为已有数据库添加新字段
-        try:
-            c.execute("ALTER TABLE animes ADD COLUMN bangumi_id INTEGER")
-        except sqlite3.OperationalError:
-            pass  # 字段已存在，忽略
-
         # 创建索引
         c.execute("CREATE INDEX IF NOT EXISTS idx_episodes_anime_id ON episodes(anime_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sources_episode_id ON sources(episode_id)")
@@ -314,15 +308,6 @@ def get_anime(anime_id: int) -> Optional[dict]:
         return dict(row) if row else None
 
 
-def get_anime_by_bangumi_id(bangumi_id: int) -> Optional[dict]:
-    """根据 Bangumi ID 查找动漫"""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT * FROM animes WHERE bangumi_id = ?", (bangumi_id,)
-        ).fetchone()
-        return dict(row) if row else None
-
-
 def get_anime_by_tmdb_id(tmdb_id: int) -> Optional[dict]:
     """根据 TMDB ID 查找动漫"""
     with get_connection() as conn:
@@ -334,12 +319,11 @@ def add_anime(data: dict) -> int:
     """添加动漫，返回新记录 ID"""
     with get_connection() as conn:
         cursor = conn.execute(
-            """INSERT INTO animes (tmdb_id, bangumi_id, title_cn, title_en, poster_url, overview,
+            """INSERT INTO animes (tmdb_id, title_cn, title_en, poster_url, overview,
                air_date, total_episodes, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 data.get("tmdb_id"),
-                data.get("bangumi_id"),
                 data.get("title_cn", ""),
                 data.get("title_en", ""),
                 data.get("poster_url", ""),

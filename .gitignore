@@ -229,3 +229,5 @@ site/
 *~
 *.backup
 *.old
+.cleanup_backup/
+tests/

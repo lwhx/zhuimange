@@ -79,11 +79,8 @@ def import_data(data: dict) -> dict:
 
         # 检查是否已存在
         existing = None
-        bangumi_id = anime_info.get("bangumi_id")
         if tmdb_id:
             existing = db.get_anime_by_tmdb_id(tmdb_id)
-        if not existing and bangumi_id:
-            existing = db.get_anime_by_bangumi_id(bangumi_id)
 
         if existing:
             anime_id = existing["id"]
