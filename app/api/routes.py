@@ -307,10 +307,14 @@ def sync_anime_stream(anime_id):
                                 if ep.get("absolute_num", 0) not in existing_nums:
                                     new_episodes.append(ep)
                             if new_episodes:
+                                new_ep_nums = [ep.get("absolute_num", 0) for ep in new_episodes if ep.get("absolute_num", 0) > 0]
                                 db.add_episodes(anime_id, new_episodes)
                                 logger.info(f"TMDB 更新: 新增 {len(new_episodes)} 个集数记录")
+                            else:
+                                new_ep_nums = []
                             db.update_anime(anime_id, {"total_episodes": detail.get("total_episodes", 0)})
-                            yield f"data: {_json.dumps({'type': 'discover_info', 'discovered': len(new_episodes)}, ensure_ascii=False)}\n\n"
+                            all_episodes = db.get_episodes(anime_id)
+                            yield f"data: {_json.dumps({'type': 'discover', 'new_episodes': new_ep_nums, 'total': len(all_episodes)}, ensure_ascii=False)}\n\n"
                 except Exception as e:
                     logger.warning(f"TMDB 集数更新失败: {e}")
 
@@ -318,9 +322,12 @@ def sync_anime_stream(anime_id):
             if is_manual:
                 yield f"data: {_json.dumps({'type': 'discovering', 'message': '正在探测集数...'}, ensure_ascii=False)}\n\n"
 
+                existing_nums_before = {ep["absolute_num"] for ep in db.get_episodes(anime_id)}
                 discovered = discover_latest_episode(anime_id)
                 if discovered > 0:
-                    yield f"data: {_json.dumps({'type': 'discover_info', 'discovered': discovered}, ensure_ascii=False)}\n\n"
+                    all_eps_after = db.get_episodes(anime_id)
+                    new_ep_nums = [ep["absolute_num"] for ep in all_eps_after if ep["absolute_num"] not in existing_nums_before]
+                    yield f"data: {_json.dumps({'type': 'discover', 'new_episodes': new_ep_nums, 'total': len(all_eps_after)}, ensure_ascii=False)}\n\n"
 
             # ===== 阶段 2: 同步视频源 =====
             episodes = db.get_episodes(anime_id)

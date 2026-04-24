@@ -587,8 +587,8 @@ function syncAnime(animeId) {
                 btn.disabled = false;
                 btn.textContent = '🔄 同步视频源';
                 progressDiv.style.display = 'none';
-                location.reload();
-            }, 2000);
+                _refreshEpisodeList(animeId);
+            }, 1500);
         }
         // 错误
         else if (data.type === 'error') {
@@ -686,6 +686,151 @@ function _insertNewEpisodes(animeId, epNums) {
                 if (strong) strong.textContent = totalEps;
             }
         });
+    }
+}
+
+/**
+ * 同步完成后通过 API 刷新集数列表和页面统计数据
+ */
+async function _refreshEpisodeList(animeId) {
+    try {
+        const resp = await apiRequest(`/api/anime/${animeId}`);
+        const anime = resp.data;
+        if (!anime) return;
+
+        const episodes = anime.episodes || [];
+        const grid = document.querySelector('.episodes-grid');
+
+        if (grid && episodes.length > 0) {
+            const emptyState = document.querySelector('.episodes-section .empty-state');
+            if (emptyState) emptyState.remove();
+
+            const existingNums = new Set();
+            grid.querySelectorAll('.episode-item').forEach(el => {
+                existingNums.add(parseInt(el.dataset.ep));
+            });
+
+            for (const ep of episodes) {
+                const epNum = ep.absolute_num;
+                if (existingNums.has(epNum)) {
+                    const epItem = grid.querySelector(`.episode-item[data-ep="${epNum}"]`);
+                    if (epItem) {
+                        const dateDiv = epItem.querySelector('.episode-item__date');
+                        if (dateDiv) {
+                            let dateText = ep.air_date || '';
+                            if (ep.source_count > 0) {
+                                dateText += (dateText ? ' · ' : '') + `${ep.source_count} 个视频源`;
+                            }
+                            dateDiv.textContent = dateText;
+                        }
+                    }
+                    continue;
+                }
+
+                const item = document.createElement('div');
+                item.className = 'episode-item';
+                item.dataset.ep = epNum;
+                let dateText = ep.air_date || '';
+                if ((ep.source_count || 0) > 0) {
+                    dateText += (dateText ? ' · ' : '') + `${ep.source_count} 个视频源`;
+                }
+                item.innerHTML = `
+                    <div class="episode-item__num">${epNum}</div>
+                    <div class="episode-item__info">
+                        <div class="episode-item__title">${ep.title ? escapeHtml(ep.title) : '第' + epNum + '集'}</div>
+                        <div class="episode-item__date">${dateText}</div>
+                    </div>
+                    <div class="episode-item__actions">
+                        <button class="btn btn--sm btn--secondary" onclick="openSourcesModal(${animeId}, ${epNum})" title="查看视频源">🎬</button>
+                        <button class="btn btn--sm btn--success" onclick="markWatched(${animeId}, ${epNum})" title="标记已看">✓</button>
+                        <button class="btn btn--sm btn--secondary" onclick="markUnwatched(${animeId}, ${epNum})" title="标记未看" style="display:none;">↩️</button>
+                    </div>
+                `;
+
+                let inserted = false;
+                const items = grid.querySelectorAll('.episode-item');
+                for (const existing of items) {
+                    if (parseInt(existing.dataset.ep) > epNum) {
+                        grid.insertBefore(item, existing);
+                        inserted = true;
+                        break;
+                    }
+                }
+                if (!inserted) {
+                    grid.appendChild(item);
+                }
+            }
+        } else if (!grid && episodes.length > 0) {
+            const section = document.querySelector('.episodes-section');
+            if (section) {
+                const emptyState = section.querySelector('.empty-state');
+                if (emptyState) emptyState.remove();
+                const newGrid = document.createElement('div');
+                newGrid.className = 'episodes-grid';
+                for (const ep of episodes) {
+                    const epNum = ep.absolute_num;
+                    const item = document.createElement('div');
+                    item.className = 'episode-item';
+                    item.dataset.ep = epNum;
+                    let dateText = ep.air_date || '';
+                    if ((ep.source_count || 0) > 0) {
+                        dateText += (dateText ? ' · ' : '') + `${ep.source_count} 个视频源`;
+                    }
+                    item.innerHTML = `
+                        <div class="episode-item__num">${epNum}</div>
+                        <div class="episode-item__info">
+                            <div class="episode-item__title">${ep.title ? escapeHtml(ep.title) : '第' + epNum + '集'}</div>
+                            <div class="episode-item__date">${dateText}</div>
+                        </div>
+                        <div class="episode-item__actions">
+                            <button class="btn btn--sm btn--secondary" onclick="openSourcesModal(${animeId}, ${epNum})" title="查看视频源">🎬</button>
+                            <button class="btn btn--sm btn--success" onclick="markWatched(${animeId}, ${epNum})" title="标记已看">✓</button>
+                            <button class="btn btn--sm btn--secondary" onclick="markUnwatched(${animeId}, ${epNum})" title="标记未看" style="display:none;">↩️</button>
+                        </div>
+                    `;
+                    newGrid.appendChild(item);
+                }
+                section.appendChild(newGrid);
+            }
+        }
+
+        const totalEps = episodes.length;
+        const watchedCount = episodes.filter(ep => ep.watched).length;
+        const unwatchedCount = totalEps - watchedCount;
+
+        const metaItems = document.querySelectorAll('.anime-detail__meta-item');
+        metaItems.forEach(mi => {
+            const strong = mi.querySelector('strong');
+            if (!strong) return;
+            const text = mi.textContent;
+            if (text.includes('集') && !text.includes('已看')) {
+                strong.textContent = totalEps;
+            }
+            if (text.includes('已看')) {
+                strong.textContent = `${watchedCount}/${totalEps}`;
+            }
+        });
+
+        const unwatchedSpan = document.querySelector('.episodes-section__header span');
+        if (unwatchedSpan) {
+            unwatchedSpan.textContent = `${unwatchedCount} 集未看`;
+        }
+
+        const progressFill = document.getElementById('progress-fill');
+        if (progressFill && totalEps > 0) {
+            progressFill.style.width = `${(watchedCount / totalEps * 100)}%`;
+        }
+        const progressText = document.getElementById('progress-text');
+        if (progressText) {
+            progressText.textContent = `${watchedCount}/${totalEps}`;
+        }
+
+        const progressInput = document.getElementById('progress-input');
+        if (progressInput) {
+            progressInput.max = totalEps;
+        }
+    } catch (err) {
+        location.reload();
     }
 }
 
