@@ -5,9 +5,12 @@ import logging
 from typing import Optional
 from datetime import date, datetime
 from flask import Blueprint, request, jsonify, current_app
+from app import config
 from app.db import database as db
 from app.core.tmdb_client import get_tmdb_client
 from app.core.source_finder import find_sources_for_episode, sync_anime_sources
+from app.core.source_health import check_episode_sources_health
+from app.core.invidious_health import check_invidious_health, get_last_invidious_health
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
 from app.core.response import success_response, error_response
 
@@ -39,6 +42,17 @@ def health_check():
     except Exception as e:
         logger.error(f"健康检查失败: {e}")
         return error_response("服务不健康", code="UNHEALTHY", status_code=503)
+
+
+@api.route('/diagnostics/invidious', methods=['GET', 'POST'])
+def invidious_diagnostics():
+    """Invidious 健康诊断"""
+    if request.method == 'POST':
+        data = request.json or {}
+        video_id = data.get('video_id') or 'dQw4w9WgXcQ'
+        result = check_invidious_health(video_id=video_id)
+        return success_response(result, message="Invidious 健康检测完成")
+    return success_response(get_last_invidious_health(), message="获取 Invidious 最近健康状态成功")
 
 
 # ==================== 搜索 ====================
@@ -258,6 +272,15 @@ def find_sources(anime_id, ep_num):
     return success_response({"count": len(sources)}, message=f"找到 {len(sources)} 个视频源")
 
 
+@api.route('/anime/<int:anime_id>/episode/<int:ep_num>/check_sources', methods=['POST'])
+def check_sources(anime_id, ep_num):
+    """检测集数视频源可用性"""
+    result = check_episode_sources_health(anime_id, ep_num)
+    if not result.get("success"):
+        return error_response(result.get("message", "检测失败"), code="EPISODE_NOT_FOUND", status_code=404)
+    return success_response(result, message=result.get("message", "检测完成"))
+
+
 # ==================== 同步 ====================
 
 @api.route('/anime/<int:anime_id>/sync', methods=['POST'])
@@ -267,7 +290,9 @@ def sync_anime(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
-    result = sync_anime_sources(anime_id)
+    data = request.json or {}
+    mode = data.get('mode', 'incremental')
+    result = sync_anime_sources(anime_id, mode=mode)
     if result.get("success"):
         return success_response(result, message="同步完成")
     return error_response(result.get("message", "同步失败"), status_code=500)
@@ -279,12 +304,16 @@ def sync_anime_stream(anime_id):
     import json as _json
     from flask import Response, stream_with_context
 
+    mode = request.args.get('mode', 'incremental')
+    if mode not in {'incremental', 'full'}:
+        mode = 'incremental'
+
     anime = db.get_anime(anime_id)
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     def generate():
-        from app.core.source_finder import find_sources_for_episode, discover_latest_episode
+        from app.core.source_finder import find_sources_for_episode, discover_latest_episode, should_sync_episode
         from app.core.tmdb_client import get_tmdb_client
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -334,27 +363,39 @@ def sync_anime_stream(anime_id):
             episodes.reverse()  # 从最新集开始同步
             total = len(episodes)
 
-            yield f"data: {_json.dumps({'type': 'start', 'total': total}, ensure_ascii=False)}\n\n"
+            yield f"data: {_json.dumps({'type': 'start', 'total': total, 'mode': mode}, ensure_ascii=False)}\n\n"
+
+            sync_items = []
+            skipped = 0
+            for ep in episodes:
+                should_sync, reason = should_sync_episode(ep, mode)
+                if should_sync:
+                    sync_items.append((ep, reason))
+                else:
+                    skipped += 1
+
+            yield f"data: {_json.dumps({'type': 'plan', 'mode': mode, 'total': total, 'target': len(sync_items), 'skipped': skipped}, ensure_ascii=False)}\n\n"
 
             synced = 0
             total_sources = 0
             done_count = 0
             first_video_id = None
-            BATCH_SIZE = 4
+            BATCH_SIZE = max(1, config.EPISODE_SYNC_WORKERS)
 
-            def _sync_ep(ep):
+            def _sync_ep(ep, reason):
                 ep_num = ep["absolute_num"]
                 try:
-                    sources = find_sources_for_episode(anime_id, ep_num, force=True)
-                    return ep_num, len(sources) if sources else 0
+                    sources = find_sources_for_episode(anime_id, ep_num, force=(mode == 'full'))
+                    return ep_num, len(sources) if sources else 0, reason
                 except Exception as e:
                     logger.error(f"同步失败: {anime['title_cn']} 第{ep_num}集 - {e}")
-                    return ep_num, 0
+                    return ep_num, 0, reason
 
-            with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-                futures = {executor.submit(_sync_ep, ep): ep for ep in episodes}
+            max_workers = min(BATCH_SIZE, len(sync_items)) if sync_items else 1
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(_sync_ep, ep, reason): ep for ep, reason in sync_items}
                 for future in as_completed(futures):
-                    ep_num, count = future.result()
+                    ep_num, count, reason = future.result()
                     done_count += 1
                     if count > 0:
                         synced += 1
@@ -366,7 +407,7 @@ def sync_anime_stream(anime_id):
                                 srcs = db.get_sources_for_episode(ep_obj.get("id", 0))
                                 if srcs:
                                     first_video_id = srcs[0].get("video_id", "")
-                    yield f"data: {_json.dumps({'type': 'episode', 'current': done_count, 'total': total, 'ep_num': ep_num, 'source_count': count}, ensure_ascii=False)}\n\n"
+                    yield f"data: {_json.dumps({'type': 'episode', 'current': done_count, 'total': len(sync_items), 'overall_total': total, 'skipped': skipped, 'ep_num': ep_num, 'source_count': count, 'reason': reason}, ensure_ascii=False)}\n\n"
 
             # ===== 阶段 3: 封面和收尾 =====
             db.touch_anime_sync(anime_id)
@@ -386,10 +427,10 @@ def sync_anime_stream(anime_id):
                 anime_id=anime_id, sync_type="manual",
                 episodes_synced=synced, sources_found=total_sources,
                 status="success",
-                message=f"同步完成: {synced}/{total} 集找到视频源"
+                message=f"同步完成: 模式={mode}, 同步 {synced}/{len(sync_items)} 集，跳过 {skipped}/{total} 集"
             )
 
-            yield f"data: {_json.dumps({'type': 'done', 'synced': synced, 'total_sources': total_sources}, ensure_ascii=False)}\n\n"
+            yield f"data: {_json.dumps({'type': 'done', 'mode': mode, 'synced': synced, 'skipped': skipped, 'target': len(sync_items), 'total': total, 'total_sources': total_sources}, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.exception(f"同步流发生错误: {e}")
             yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
@@ -434,6 +475,11 @@ def update_settings():
             update_tg_backup_schedule(enabled, days)
         except Exception as e:
             logger.error(f"更新 TG 备份计划失败: {e}")
+
+    # 如果更新了 Invidious 设置，重置客户端以便立即加载新实例配置
+    if 'invidious_url' in data or 'invidious_fallback_urls' in data:
+        from app.core.invidious_client import reset_invidious_client
+        reset_invidious_client()
 
     return success_response(message="更新设置成功")
 

@@ -142,21 +142,25 @@ def find_sources_for_episode(
     keywords = _get_search_keywords(anime, episode_num, aliases)
     logger.info(f"搜索关键词: {keywords}")
 
-    # 搜索并收集所有结果
+    # 并发搜索并收集所有结果
     all_videos = []
     seen_ids = set()
+    max_workers = min(max(1, config.SOURCE_SEARCH_WORKERS), len(keywords)) if keywords else 1
 
-    for keyword in keywords:
-        try:
-            videos = get_invidious_client().search_videos(keyword, max_results=config.MAX_SEARCH_RESULTS)
-            logger.info(f"关键词 '{keyword}' 搜索到 {len(videos)} 个视频")
-            for video in videos:
-                vid = video.get("video_id", "")
-                if vid and vid not in seen_ids:
-                    seen_ids.add(vid)
-                    all_videos.append(video)
-        except Exception as e:
-            logger.error(f"搜索关键词 '{keyword}' 出错: {type(e).__name__}: {e}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_search_keyword_videos, keyword): keyword for keyword in keywords}
+        for future in as_completed(futures):
+            keyword = futures[future]
+            try:
+                videos = future.result()
+                logger.info(f"关键词 '{keyword}' 搜索到 {len(videos)} 个视频")
+                for video in videos:
+                    vid = video.get("video_id", "")
+                    if vid and vid not in seen_ids:
+                        seen_ids.add(vid)
+                        all_videos.append(video)
+            except Exception as e:
+                logger.error(f"搜索关键词 '{keyword}' 出错: {type(e).__name__}: {e}")
 
     logger.info(f"去重后找到 {len(all_videos)} 个候选视频")
 
@@ -235,6 +239,40 @@ def find_sources_for_episode(
     )
 
     return saved_sources
+
+
+def _search_keyword_videos(keyword: str) -> list[dict]:
+    """
+    搜索单个关键词的视频列表
+
+    Args:
+        keyword: 搜索关键词
+
+    Returns:
+        视频列表
+    """
+    return get_invidious_client().search_videos(keyword, max_results=config.MAX_SEARCH_RESULTS)
+
+
+def should_sync_episode(episode: dict, mode: str = "incremental") -> tuple[bool, str]:
+    """
+    判断单集是否需要同步视频源
+
+    Args:
+        episode: 集数记录
+        mode: 同步模式，incremental 表示增量，full 表示全量
+
+    Returns:
+        是否同步和原因
+    """
+    if mode == "full":
+        return True, "full"
+
+    sources = db.get_sources_for_episode(episode["id"])
+    if not sources:
+        return True, "missing"
+
+    return False, "cached"
 
 
 def discover_latest_episode(anime_id: int) -> int:
@@ -327,12 +365,13 @@ def discover_latest_episode(anime_id: int) -> int:
     return max_ep
 
 
-def sync_anime_sources(anime_id: int) -> dict:
+def sync_anime_sources(anime_id: int, mode: str = "incremental") -> dict:
     """
     同步整部动漫的视频源
 
     Args:
         anime_id: 动漫 ID
+        mode: 同步模式，incremental 表示增量同步，full 表示全量刷新
 
     Returns:
         同步结果
@@ -340,6 +379,9 @@ def sync_anime_sources(anime_id: int) -> dict:
     anime = db.get_anime(anime_id)
     if not anime:
         return {"success": False, "error": "动漫不存在"}
+
+    if mode not in {"incremental", "full"}:
+        mode = "incremental"
 
     # TMDB 添加的动漫：先从 TMDB 更新集数
     tmdb_id = anime.get("tmdb_id")
@@ -372,25 +414,41 @@ def sync_anime_sources(anime_id: int) -> dict:
         logger.warning(f"探测最新集数失败: {e}")
 
     episodes = db.get_episodes(anime_id)
+    sync_items = []
+    skipped = 0
+    skip_reasons = {"cached": 0}
+    for ep in episodes:
+        should_sync, reason = should_sync_episode(ep, mode)
+        if should_sync:
+            sync_items.append((ep, reason))
+        else:
+            skipped += 1
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+
     synced = 0
     total_sources = 0
     lock = threading.Lock()
 
-    def _sync_one(ep):
+    logger.info(
+        f"同步并发配置: 模式={mode}, 集数并发={config.EPISODE_SYNC_WORKERS}, "
+        f"关键词并发={config.SOURCE_SEARCH_WORKERS}, 待同步={len(sync_items)}, 跳过={skipped}"
+    )
+
+    def _sync_one(ep, reason):
         """同步单集（线程任务）"""
         try:
-            sources = find_sources_for_episode(anime_id, ep["absolute_num"], force=True)
-            return (ep["absolute_num"], sources)
+            sources = find_sources_for_episode(anime_id, ep["absolute_num"], force=(mode == "full"))
+            return (ep["absolute_num"], sources, reason)
         except Exception as e:
             logger.error(f"同步失败: {anime['title_cn']} 第{ep['absolute_num']}集 - {e}")
-            return (ep["absolute_num"], None)
+            return (ep["absolute_num"], None, reason)
 
-    # 多线程并发同步（默认 4 线程，自建 Invidious 无速率限制）
-    max_workers = min(4, len(episodes)) if episodes else 1
+    # 多线程并发同步，线程数由配置控制，避免叠加单集关键词并发后压垮实例
+    max_workers = min(max(1, config.EPISODE_SYNC_WORKERS), len(sync_items)) if sync_items else 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_sync_one, ep): ep for ep in episodes}
+        futures = {executor.submit(_sync_one, ep, reason): ep for ep, reason in sync_items}
         for future in as_completed(futures):
-            ep_num, sources = future.result()
+            ep_num, sources, reason = future.result()
             if sources:
                 with lock:
                     synced += 1
@@ -421,11 +479,16 @@ def sync_anime_sources(anime_id: int) -> dict:
         episodes_synced=synced,
         sources_found=total_sources,
         status="success",
-        message=f"同步完成: {synced}/{len(episodes)} 集找到视频源"
+        message=f"同步完成: 模式={mode}, 同步 {synced}/{len(sync_items)} 集，跳过 {skipped}/{len(episodes)} 集"
     )
 
     return {
         "success": True,
+        "mode": mode,
         "synced_episodes": synced,
+        "skipped_episodes": skipped,
+        "total_episodes": len(episodes),
+        "target_episodes": len(sync_items),
         "total_sources": total_sources,
+        "skip_reasons": skip_reasons,
     }

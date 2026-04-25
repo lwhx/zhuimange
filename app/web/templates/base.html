@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="追漫阁 - 个人动漫追更管理平台">
     <title>{% block title %}追漫阁{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}?v=9">
     <link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}?v=3">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script>
@@ -44,6 +44,7 @@
         <div class="navbar__nav">
             <a href="/" class="navbar__link {% if request.path == '/' %}active{% endif %}">首页</a>
             <a href="/stats" class="navbar__link {% if request.path == '/stats' %}active{% endif %}">📊 统计</a>
+            <a href="/diagnostics" class="navbar__link {% if request.path == '/diagnostics' %}active{% endif %}">🛰️ 诊断</a>
             <a href="/settings" class="navbar__link {% if request.path == '/settings' %}active{% endif %}">⚙️ 设置</a>
             <div class="navbar__theme-selector">
                 <button type="button" class="navbar__theme-toggle" aria-label="切换主题" title="切换主题">🌙</button>
@@ -117,7 +118,7 @@
     <!-- Toast 容器 -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="{{ url_for('static', filename='app.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=15"></script>
     {% block scripts %}{% endblock %}
 </body>
 

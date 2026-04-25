@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}诊断中心 - 追漫阁{% endblock %}
+
+{% block content %}
+<div class="page-header diagnostics-hero">
+    <div>
+        <h1 class="page-header__title">Invidious 健康面板</h1>
+        <p class="page-header__subtitle">监控自部署视频搜索服务的连通性、视频详情链路和实例切换状态</p>
+    </div>
+    <div class="diagnostics-actions">
+        <input type="text" id="invidious-video-id-input" class="diagnostics-video-input" value="dQw4w9WgXcQ" placeholder="输入 YouTube 视频 ID">
+        <button type="button" class="btn btn--primary" id="invidious-check-btn" onclick="checkInvidiousHealth()">🔎 立即检测</button>
+    </div>
+</div>
+
+<div class="diagnostics-grid">
+    <section class="diagnostics-card diagnostics-card--status" id="invidious-overall-card">
+        <div class="diagnostics-card__label">整体状态</div>
+        <div class="diagnostics-card__value" id="invidious-overall-text">未检测</div>
+        <div class="diagnostics-card__hint" id="invidious-checked-at">等待首次健康检测</div>
+    </section>
+
+    <section class="diagnostics-card">
+        <div class="diagnostics-card__label">当前活跃实例</div>
+        <div class="diagnostics-card__value diagnostics-card__value--url" id="invidious-active-url">-</div>
+        <div class="diagnostics-card__hint">优先使用可连通实例执行视频详情链路检测</div>
+    </section>
+
+    <section class="diagnostics-card">
+        <div class="diagnostics-card__label">负载均衡</div>
+        <div class="diagnostics-card__value" id="invidious-lb-ratio">7:3</div>
+        <div class="diagnostics-card__hint" id="invidious-lb-detail">主实例 70%，备用实例整体 30%</div>
+    </section>
+
+    <section class="diagnostics-card">
+        <div class="diagnostics-card__label">视频详情链路</div>
+        <div class="diagnostics-card__value" id="invidious-video-status">未检测</div>
+        <div class="diagnostics-card__hint" id="invidious-video-detail">使用默认公开视频 ID 进行探测</div>
+    </section>
+</div>
+
+<section class="diagnostics-section">
+    <div class="diagnostics-section__header">
+        <div>
+            <h2>实例连通性</h2>
+            <p>依次检测主实例与备用实例的 <code>/api/v1/stats</code> 接口</p>
+        </div>
+        <span class="diagnostics-chip" id="invidious-timeout">超时配置：-</span>
+    </div>
+    <div class="diagnostics-instance-list" id="invidious-instance-list">
+        <div class="diagnostics-empty">暂无检测数据</div>
+    </div>
+</section>
+
+<section class="diagnostics-section diagnostics-section--video">
+    <div class="diagnostics-section__header">
+        <div>
+            <h2>视频详情探针</h2>
+            <p>逐个检测可连通实例的 <code>/api/v1/videos/{video_id}</code>，用于定位是哪一个实例的视频详情链路异常</p>
+        </div>
+    </div>
+    <div class="diagnostics-probe" id="invidious-video-probe">
+        <div class="diagnostics-empty">暂无视频详情检测数据</div>
+    </div>
+    <div class="diagnostics-instance-list diagnostics-video-probe-list" id="invidious-video-probe-list">
+        <div class="diagnostics-empty">暂无逐实例视频详情探针数据</div>
+    </div>
+</section>
+{% endblock %}

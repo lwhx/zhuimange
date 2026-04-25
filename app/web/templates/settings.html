@@ -70,12 +70,26 @@
 
     <div class="settings-row">
         <div class="settings-row__label">
-            <span class="settings-row__label-text">Invidious 实例地址</span>
-            <span class="settings-row__label-desc">用于搜索 YouTube 视频的镜像实例</span>
+            <span class="settings-row__label-text">主实例地址</span>
+            <span class="settings-row__label-desc">主实例承担约 70% 的搜索、同步和视频详情请求</span>
         </div>
         <div class="settings-row__control">
             <input type="text" data-setting="invidious_url" value="{{ settings.get('invidious_url', '') }}"
                 placeholder="https://invidious.example.com" style="width:280px;">
+        </div>
+    </div>
+
+    <div class="settings-row settings-row--stacked">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">备用实例列表</span>
+            <span class="settings-row__label-desc">备用实例整体承担约 30% 请求，可手动添加或删除自部署实例</span>
+        </div>
+        <div class="settings-row__control settings-row__control--wide">
+            <input type="hidden" data-setting="invidious_fallback_urls" id="invidious-fallback-urls"
+                value='{{ settings.get("invidious_fallback_urls", "[]") }}'>
+            <div class="invidious-instance-editor" id="invidious-fallback-editor"></div>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="addInvidiousFallbackRow()">＋ 添加备用实例</button>
+            <div class="settings-help">负载均衡比例：主实例 7，备用实例整体 3；多个备用实例会自动均分备用权重。</div>
         </div>
     </div>
 </div>

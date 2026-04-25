@@ -489,7 +489,8 @@ function closeSourcesModal() {
 }
 
 async function findSources(animeId, epNum, force = false) {
-    const btn = document.querySelector(`[data-ep="${epNum}"] .btn[onclick*="findSources"]`) || event?.target;
+    const currentEvent = typeof event !== 'undefined' ? event : null;
+    const btn = document.querySelector(`[data-ep="${epNum}"] .btn[onclick*="findSources"]`) || currentEvent?.target;
     if (btn) {
         btn.disabled = true;
         btn.textContent = '搜索中...';
@@ -501,7 +502,6 @@ async function findSources(animeId, epNum, force = false) {
             body: JSON.stringify({ force }),
         });
         ToastManager.success('搜索完成');
-        // 重新打开模态框以刷新结果
         openSourcesModal(animeId, epNum);
     } catch (err) {
         if (btn) {
@@ -511,21 +511,47 @@ async function findSources(animeId, epNum, force = false) {
     }
 }
 
+async function checkSourcesHealth(animeId, epNum) {
+    const currentEvent = typeof event !== 'undefined' ? event : null;
+    const btn = currentEvent?.target;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '检测中...';
+    }
+
+    try {
+        const resp = await apiRequest(`/api/anime/${animeId}/episode/${epNum}/check_sources`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+        ToastManager.success(resp.message || '检测完成');
+        openSourcesModal(animeId, epNum);
+    } catch (err) {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '检测可用性';
+        }
+    }
+}
+
 // ==================== 同步 ====================
 
-function syncAnime(animeId) {
+function syncAnime(animeId, mode = 'incremental') {
+    if (mode === 'full' && !confirm('全量刷新会重新搜索全部集数并替换旧视频源，耗时较长，确定继续？')) return;
     const btn = document.getElementById('sync-btn');
+    const fullBtn = document.getElementById('full-sync-btn');
     const progressDiv = document.getElementById('sync-progress');
     const progressFill = document.getElementById('sync-progress-fill');
     const progressText = document.getElementById('sync-progress-text');
 
     btn.disabled = true;
-    btn.textContent = '同步中...';
+    if (fullBtn) fullBtn.disabled = true;
+    btn.textContent = mode === 'full' ? '全量刷新中...' : '同步中...';
     progressDiv.style.display = 'block';
     progressFill.style.width = '0%';
     progressText.textContent = '准备中...';
 
-    const es = new EventSource(`/api/anime/${animeId}/sync_stream`);
+    const es = new EventSource(`/api/anime/${animeId}/sync_stream?mode=${encodeURIComponent(mode)}`);
 
     es.onmessage = function (event) {
         const data = JSON.parse(event.data);
@@ -544,13 +570,16 @@ function syncAnime(animeId) {
         }
         // 阶段 2 开始
         else if (data.type === 'start') {
-            progressText.textContent = `0/${data.total}`;
+            progressText.textContent = mode === 'full' ? `全量刷新准备中，共 ${data.total} 集` : `增量同步准备中，共 ${data.total} 集`;
+        }
+        else if (data.type === 'plan') {
+            progressText.textContent = mode === 'full' ? `需刷新 ${data.target}/${data.total} 集` : `需同步 ${data.target} 集，跳过 ${data.skipped} 集`;
         }
         // 阶段 2: 逐集同步
         else if (data.type === 'episode') {
-            const pct = Math.round(data.current / data.total * 100);
+            const pct = data.total > 0 ? Math.round(data.current / data.total * 100) : 100;
             progressFill.style.width = pct + '%';
-            progressText.textContent = `${data.current}/${data.total}`;
+            progressText.textContent = mode === 'full' ? `${data.current}/${data.total}` : `${data.current}/${data.total} · 已跳过 ${data.skipped || 0}`;
 
             // 实时更新对应集数的视频源数量
             const epItem = document.querySelector(`.episode-item[data-ep="${data.ep_num}"]`);
@@ -582,11 +611,14 @@ function syncAnime(animeId) {
             progressFill.style.width = '100%';
             progressText.textContent = '✓ 完成';
             ToastManager.success(
-                `同步完成: ${data.synced} 集找到 ${data.total_sources} 个视频源`
+                mode === 'full'
+                    ? `全量刷新完成: ${data.synced} 集找到 ${data.total_sources} 个视频源`
+                    : `增量同步完成: 同步 ${data.synced} 集，跳过 ${data.skipped || 0} 集，找到 ${data.total_sources} 个视频源`
             );
             setTimeout(() => {
                 btn.disabled = false;
-                btn.textContent = '🔄 同步视频源';
+                if (fullBtn) fullBtn.disabled = false;
+                btn.textContent = '⚡ 同步视频源';
                 progressDiv.style.display = 'none';
                 _refreshEpisodeList(animeId);
             }, 1500);
@@ -595,7 +627,8 @@ function syncAnime(animeId) {
         else if (data.type === 'error') {
             es.close();
             btn.disabled = false;
-            btn.textContent = '🔄 同步视频源';
+            if (fullBtn) fullBtn.disabled = false;
+            btn.textContent = '⚡ 同步视频源';
             progressDiv.style.display = 'none';
             ToastManager.error(data.message || '同步失败');
         }
@@ -604,7 +637,8 @@ function syncAnime(animeId) {
     es.onerror = function () {
         es.close();
         btn.disabled = false;
-        btn.textContent = '🔄 同步视频源';
+        if (fullBtn) fullBtn.disabled = false;
+        btn.textContent = '⚡ 同步视频源';
         progressDiv.style.display = 'none';
         ToastManager.error('同步连接中断');
     };
@@ -849,7 +883,68 @@ async function deleteAnime(animeId) {
 
 // ==================== 设置 ====================
 
+function initInvidiousFallbackEditor() {
+    const editor = document.getElementById('invidious-fallback-editor');
+    const hidden = document.getElementById('invidious-fallback-urls');
+    if (!editor || !hidden) return;
+    const urls = parseInvidiousFallbackUrls(hidden.value);
+    editor.innerHTML = '';
+    urls.forEach(url => addInvidiousFallbackRow(url));
+    if (!urls.length) {
+        editor.innerHTML = '<div class="invidious-instance-empty">暂无备用实例，点击下方按钮添加自部署实例</div>';
+    }
+}
+
+function parseInvidiousFallbackUrls(rawValue) {
+    const text = (rawValue || '').trim();
+    if (!text) return [];
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+            return parsed.map(item => String(item).trim()).filter(Boolean);
+        }
+    } catch (err) { }
+    return text.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
+}
+
+function addInvidiousFallbackRow(value = '') {
+    const editor = document.getElementById('invidious-fallback-editor');
+    if (!editor) return;
+    const empty = editor.querySelector('.invidious-instance-empty');
+    if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'invidious-instance-row';
+    row.innerHTML = `
+        <span class="invidious-instance-row__badge">备用</span>
+        <input type="text" class="invidious-instance-row__input" value="${escapeHtml(value)}" placeholder="https://backup-invidious.example.com" oninput="syncInvidiousFallbackSetting()">
+        <button type="button" class="invidious-instance-row__remove" onclick="removeInvidiousFallbackRow(this)" aria-label="删除备用实例">删除</button>
+    `;
+    editor.appendChild(row);
+    syncInvidiousFallbackSetting();
+}
+
+function removeInvidiousFallbackRow(button) {
+    const row = button.closest('.invidious-instance-row');
+    if (row) row.remove();
+    const editor = document.getElementById('invidious-fallback-editor');
+    if (editor && !editor.querySelector('.invidious-instance-row')) {
+        editor.innerHTML = '<div class="invidious-instance-empty">暂无备用实例，点击下方按钮添加自部署实例</div>';
+    }
+    syncInvidiousFallbackSetting();
+}
+
+function syncInvidiousFallbackSetting() {
+    const hidden = document.getElementById('invidious-fallback-urls');
+    if (!hidden) return;
+    const urls = Array.from(document.querySelectorAll('.invidious-instance-row__input'))
+        .map(input => input.value.trim().replace(/\/+$/, ''))
+        .filter(Boolean)
+        .filter((url, index, list) => list.indexOf(url) === index);
+    hidden.value = JSON.stringify(urls);
+}
+
 async function saveSettings() {
+    syncInvidiousFallbackSetting();
     const settings = {};
     document.querySelectorAll('[data-setting]').forEach(el => {
         const key = el.dataset.setting;
@@ -1043,12 +1138,169 @@ async function telegramBackup() {
     btn.textContent = '📨 发送到 TG';
 }
 
+// ==================== 诊断中心 ====================
+
+async function loadInvidiousHealth() {
+    if (!document.getElementById('invidious-overall-card')) return;
+    try {
+        const resp = await apiRequest('/api/diagnostics/invidious');
+        renderInvidiousHealth(resp.data || {});
+    } catch (err) {
+        // handled by apiRequest
+    }
+}
+
+async function checkInvidiousHealth() {
+    const btn = document.getElementById('invidious-check-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '检测中...';
+    }
+    try {
+        const videoIdInput = document.getElementById('invidious-video-id-input');
+        const videoId = videoIdInput ? videoIdInput.value.trim() : '';
+        const resp = await apiRequest('/api/diagnostics/invidious', {
+            method: 'POST',
+            body: JSON.stringify({ video_id: videoId }),
+        });
+        renderInvidiousHealth(resp.data || {});
+        ToastManager.success(resp.message || 'Invidious 健康检测完成');
+    } catch (err) {
+        // handled by apiRequest
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = '🔎 立即检测';
+    }
+}
+
+function renderInvidiousHealth(data) {
+    const status = data.overall_status || 'unknown';
+    const statusMap = {
+        healthy: '健康',
+        degraded: '链路异常',
+        down: '不可用',
+        unknown: '未检测',
+    };
+    const overallCard = document.getElementById('invidious-overall-card');
+    const overallText = document.getElementById('invidious-overall-text');
+    const checkedAt = document.getElementById('invidious-checked-at');
+    const activeUrl = document.getElementById('invidious-active-url');
+    const timeout = document.getElementById('invidious-timeout');
+    const lbRatio = document.getElementById('invidious-lb-ratio');
+    const lbDetail = document.getElementById('invidious-lb-detail');
+    const loadBalance = data.load_balance || {};
+
+    if (overallCard) overallCard.dataset.status = status;
+    if (overallText) overallText.textContent = statusMap[status] || status;
+    if (checkedAt) checkedAt.textContent = data.checked_at ? `最近检测：${data.checked_at}` : '等待首次健康检测';
+    if (activeUrl) activeUrl.textContent = data.active_url || '-';
+    if (timeout) timeout.textContent = `超时配置：${data.timeout || '-'} 秒`;
+    if (lbRatio) lbRatio.textContent = loadBalance.ratio_text || '7:3';
+    if (lbDetail) lbDetail.textContent = `${loadBalance.description || '主实例约 70%，备用实例整体约 30%'} · 可用 ${loadBalance.available_count ?? 0}/${loadBalance.total_count ?? 0}`;
+
+    renderInvidiousInstances(data.instances || []);
+    renderInvidiousVideoProbe(data.video_probe || {});
+    renderInvidiousVideoProbes(data.video_probes || []);
+}
+
+function renderInvidiousInstances(instances) {
+    const list = document.getElementById('invidious-instance-list');
+    if (!list) return;
+    if (!instances.length) {
+        list.innerHTML = '<div class="diagnostics-empty">暂无检测数据</div>';
+        return;
+    }
+    list.innerHTML = instances.map((item, index) => `
+        <div class="diagnostics-instance diagnostics-instance--${item.available ? 'ok' : 'bad'}">
+            <div class="diagnostics-instance__main">
+                <span class="diagnostics-dot"></span>
+                <div>
+                    <div class="diagnostics-instance__url">${escapeHtml(item.url || '-')}</div>
+                    <div class="diagnostics-instance__meta">
+                        ${escapeHtml(item.role_text || (index === 0 ? '主实例' : '备用实例'))} · 权重 ${item.weight ?? '-'} · HTTP ${item.status_code || '-'} · ${item.latency_ms ?? '-'} ms
+                    </div>
+                </div>
+            </div>
+            <div class="diagnostics-instance__side">
+                <span class="diagnostics-role diagnostics-role--${item.role || 'fallback'}">${escapeHtml(item.role_text || '备用实例')}</span>
+                <span class="diagnostics-badge diagnostics-badge--${item.available ? 'ok' : 'bad'}">${item.available ? '可用' : '异常'}</span>
+                <span>${escapeHtml(item.version || item.error || '')}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderInvidiousVideoProbe(probe) {
+    const status = document.getElementById('invidious-video-status');
+    const detail = document.getElementById('invidious-video-detail');
+    const box = document.getElementById('invidious-video-probe');
+    if (status) status.textContent = probe.available ? '可用' : (probe.error ? '异常' : '未检测');
+    if (detail) detail.textContent = probe.available ? `${probe.title || '视频详情可访问'} · ${probe.latency_ms ?? '-'} ms` : (probe.error || '使用默认公开视频 ID 进行探测');
+    if (!box) return;
+    if (!probe.video_id) {
+        box.innerHTML = '<div class="diagnostics-empty">暂无视频详情检测数据</div>';
+        return;
+    }
+    box.innerHTML = `
+        <div class="diagnostics-probe__row">
+            <span>视频 ID</span>
+            <strong>${escapeHtml(probe.video_id || '-')}</strong>
+        </div>
+        <div class="diagnostics-probe__row">
+            <span>HTTP 状态</span>
+            <strong>${probe.status_code || '-'}</strong>
+        </div>
+        <div class="diagnostics-probe__row">
+            <span>响应耗时</span>
+            <strong>${probe.latency_ms ?? '-'} ms</strong>
+        </div>
+        <div class="diagnostics-probe__row">
+            <span>视频标题</span>
+            <strong>${escapeHtml(probe.title || '-')}</strong>
+        </div>
+        <div class="diagnostics-probe__row diagnostics-probe__row--full">
+            <span>最近错误</span>
+            <strong>${escapeHtml(probe.error || '无')}</strong>
+        </div>
+    `;
+}
+
+function renderInvidiousVideoProbes(probes) {
+    const list = document.getElementById('invidious-video-probe-list');
+    if (!list) return;
+    if (!probes.length) {
+        list.innerHTML = '<div class="diagnostics-empty">暂无逐实例视频详情探针数据</div>';
+        return;
+    }
+    list.innerHTML = probes.map(item => `
+        <div class="diagnostics-instance diagnostics-instance--${item.available ? 'ok' : 'bad'}">
+            <div class="diagnostics-instance__main">
+                <span class="diagnostics-dot"></span>
+                <div>
+                    <div class="diagnostics-instance__url">${escapeHtml(item.url || '-')}</div>
+                    <div class="diagnostics-instance__meta">
+                        ${escapeHtml(item.role_text || '实例')} · 视频 ID ${escapeHtml(item.video_id || '-')} · HTTP ${item.status_code || '-'} · ${item.latency_ms ?? '-'} ms
+                    </div>
+                </div>
+            </div>
+            <div class="diagnostics-instance__side">
+                <span class="diagnostics-role diagnostics-role--${item.role || 'fallback'}">${escapeHtml(item.role_text || '实例')}</span>
+                <span class="diagnostics-badge diagnostics-badge--${item.available ? 'ok' : 'bad'}">${item.available ? '详情可用' : '详情异常'}</span>
+                <span>${escapeHtml(item.title || item.error || '')}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
 // ==================== 初始化 ====================
 
 document.addEventListener('DOMContentLoaded', () => {
     ThemeManager.init();
     ToastManager.init();
     initSearch();
+    initInvidiousFallbackEditor();
+    loadInvidiousHealth();
 
     // 主题切换按钮
     const themeToggle = document.querySelector('.navbar__theme-toggle');

@@ -38,16 +38,20 @@ TMDB_LANGUAGE = os.getenv("TMDB_LANGUAGE", "zh-CN")
 INVIDIOUS_URL = os.getenv("INVIDIOUS_URL", "https://inv.nadeko.net")
 INVIDIOUS_API_TIMEOUT = int(os.getenv("INVIDIOUS_API_TIMEOUT", "30"))
 INVIDIOUS_FALLBACK_URLS = [
-    "https://inv.nadeko.net",
-    "https://invidious.nerdvpn.de",
-    "https://yewtu.be",
+    url.strip().rstrip("/")
+    for url in os.getenv("INVIDIOUS_FALLBACK_URLS", "").split(",")
+    if url.strip()
 ]
+INVIDIOUS_PRIMARY_WEIGHT = int(os.getenv("INVIDIOUS_PRIMARY_WEIGHT", "7"))
+INVIDIOUS_FALLBACK_WEIGHT = int(os.getenv("INVIDIOUS_FALLBACK_WEIGHT", "3"))
 
 # ==================== 匹配算法参数 ====================
 MATCH_THRESHOLD = int(os.getenv("MATCH_THRESHOLD", "50"))
 MATCH_RECOMMEND_THRESHOLD = int(os.getenv("MATCH_RECOMMEND_THRESHOLD", "70"))
 MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "50"))
 SEARCH_KEYWORDS_LIMIT = int(os.getenv("SEARCH_KEYWORDS_LIMIT", "5"))
+SOURCE_SEARCH_WORKERS = int(os.getenv("SOURCE_SEARCH_WORKERS", "6"))
+EPISODE_SYNC_WORKERS = int(os.getenv("EPISODE_SYNC_WORKERS", "6"))
 FUZZY_EDIT_DISTANCE_MAX = int(os.getenv("FUZZY_EDIT_DISTANCE_MAX", "2"))
 FUZZY_NGRAM_SIZE = int(os.getenv("FUZZY_NGRAM_SIZE", "2"))
 FUZZY_MIN_SIMILARITY = float(os.getenv("FUZZY_MIN_SIMILARITY", "0.6"))

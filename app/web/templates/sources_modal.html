@@ -1,16 +1,21 @@
 <!-- 视频源模态框内容 (通过 AJAX 加载) -->
 {% if sources|length > 0 %}
-<div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
-    <span style="color:var(--text-muted);font-size:0.85rem;">
+<div class="source-modal-toolbar">
+    <span class="source-modal-toolbar__title">
         {{ anime.title_cn }} · 第{{ episode.absolute_num }}集 · 共 {{ sources|length }} 个视频源
     </span>
-    <button type="button" class="btn btn--secondary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
-        🔄 重新搜索
-    </button>
+    <div class="source-modal-toolbar__actions">
+        <button type="button" class="btn btn--secondary btn--sm" onclick="checkSourcesHealth({{ anime.id }}, {{ episode.absolute_num }})">
+            🔎 检测可用性
+        </button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
+            🔄 重新搜索
+        </button>
+    </div>
 </div>
 
 {% for source in sources %}
-<div class="source-item">
+<div class="source-item{% if source.health_status == 'invalid' or source.is_valid == 0 %} source-item--invalid{% endif %}">
     <a href="{{ source.youtube_url }}" target="_blank" rel="noopener" class="source-item__thumb-wrap">
         <img class="source-item__thumb"
              src="https://img.youtube.com/vi/{{ source.video_id }}/mqdefault.jpg"
@@ -26,14 +31,29 @@
             {% if source.published_at %}
             <span>📅 {{ source.published_at }}</span>
             {% endif %}
+            {% if source.last_checked_at %}
+            <span>🕒 {{ source.last_checked_at }}</span>
+            {% endif %}
         </div>
+        {% if source.last_check_error %}
+        <div class="source-item__error">{{ source.last_check_error }}</div>
+        {% endif %}
     </div>
 
-    <div class="source-item__score
-        {% if source.match_score >= 70 %}source-item__score--high
-        {% elif source.match_score >= 50 %}source-item__score--medium
-        {% else %}source-item__score--low{% endif %}">
-        {{ "%.0f"|format(source.match_score) }}分
+    <div class="source-item__badges">
+        {% set health_status = source.health_status or 'unknown' %}
+        <span class="source-health-badge source-health-badge--{{ health_status }}">
+            {% if health_status == 'available' %}可用
+            {% elif health_status == 'invalid' %}已失效
+            {% elif health_status == 'error' %}疑似异常
+            {% else %}未检测{% endif %}
+        </span>
+        <div class="source-item__score
+            {% if source.match_score >= 70 %}source-item__score--high
+            {% elif source.match_score >= 50 %}source-item__score--medium
+            {% else %}source-item__score--low{% endif %}">
+            {{ "%.0f"|format(source.match_score) }}分
+        </div>
     </div>
 
     <a href="{{ source.youtube_url }}" target="_blank" rel="noopener" class="source-item__link">

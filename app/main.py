@@ -288,7 +288,7 @@ def _register_routes(app: Flask):
         if not episode:
             return "集数不存在", 404
 
-        sources = get_sources_for_episode(episode["id"])
+        sources = get_sources_for_episode(episode["id"], include_invalid=True)
         for source in sources:
             source["youtube_url"] = invidious_to_youtube(source["video_id"])
             source["duration_fmt"] = format_duration(source.get("duration", 0))
@@ -307,6 +307,10 @@ def _register_routes(app: Flask):
         from app.db.database import get_watch_stats
         stats = get_watch_stats()
         return render_template('stats.html', stats=stats)
+
+    @app.route('/diagnostics')
+    def diagnostics_page():
+        return render_template('diagnostics.html')
 
 
 

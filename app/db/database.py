@@ -108,6 +108,21 @@ def check_connection():
         raise
 
 
+def _ensure_source_health_columns(cursor: sqlite3.Cursor) -> None:
+    """确保视频源健康检测字段存在"""
+    cursor.execute("PRAGMA table_info(sources)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    column_definitions = {
+        "health_status": "TEXT DEFAULT 'unknown'",
+        "last_checked_at": "TIMESTAMP",
+        "last_check_error": "TEXT DEFAULT ''",
+        "fail_count": "INTEGER DEFAULT 0",
+    }
+    for column_name, column_definition in column_definitions.items():
+        if column_name not in existing_columns:
+            cursor.execute(f"ALTER TABLE sources ADD COLUMN {column_name} {column_definition}")
+
+
 def init_db(use_migrations: Optional[bool] = None) -> None:
     """初始化数据库，创建所有表
 
@@ -123,6 +138,8 @@ def init_db(use_migrations: Optional[bool] = None) -> None:
         from app.db.migration import upgrade_database
         try:
             upgrade_database()
+            with get_connection() as conn:
+                _ensure_source_health_columns(conn.cursor())
             return
         except Exception as e:
             logger.warning(f"迁移执行失败，回退到传统初始化: {e}")
@@ -177,9 +194,14 @@ def init_db(use_migrations: Optional[bool] = None) -> None:
             published_at TEXT DEFAULT '',
             match_score REAL DEFAULT 0,
             is_valid INTEGER DEFAULT 1,
+            health_status TEXT DEFAULT 'unknown',
+            last_checked_at TIMESTAMP,
+            last_check_error TEXT DEFAULT '',
+            fail_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (episode_id) REFERENCES episodes(id) ON DELETE CASCADE
         )''')
+        _ensure_source_health_columns(c)
 
         # 自定义别名表
         c.execute('''CREATE TABLE IF NOT EXISTS custom_aliases (
@@ -257,6 +279,7 @@ def init_db(use_migrations: Optional[bool] = None) -> None:
             "match_threshold": str(config.MATCH_THRESHOLD),
             "match_recommend_threshold": str(config.MATCH_RECOMMEND_THRESHOLD),
             "invidious_url": config.INVIDIOUS_URL,
+            "invidious_fallback_urls": "[]",
             "tg_notify_enabled": "false",
         }
         for key, value in default_settings.items():
@@ -448,14 +471,59 @@ def mark_episode_watched(anime_id: int, ep_num: int, watched: bool = True) -> No
 
 # ==================== 视频源 CRUD ====================
 
-def get_sources_for_episode(episode_id: int) -> list[dict]:
+def get_sources_for_episode(episode_id: int, include_invalid: bool = False) -> list[dict]:
     """获取集数的视频源"""
     with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM sources WHERE episode_id = ? AND is_valid = 1 ORDER BY match_score DESC",
-            (episode_id,)
-        ).fetchall()
+        if include_invalid:
+            rows = conn.execute(
+                "SELECT * FROM sources WHERE episode_id = ? ORDER BY is_valid DESC, match_score DESC",
+                (episode_id,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM sources WHERE episode_id = ? AND is_valid = 1 ORDER BY match_score DESC",
+                (episode_id,)
+            ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_source(source_id: int) -> Optional[dict]:
+    """获取单个视频源"""
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def update_source_health(source_id: int, status: str, error_message: str = '', fail_threshold: int = 2) -> Optional[dict]:
+    """更新视频源健康状态"""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT fail_count FROM sources WHERE id = ?",
+            (source_id,)
+        ).fetchone()
+        if not row:
+            return None
+
+        if status == 'available':
+            fail_count = 0
+            is_valid = 1
+            health_status = 'available'
+            last_check_error = ''
+        else:
+            fail_count = int(row['fail_count'] or 0) + 1
+            is_valid = 0 if fail_count >= fail_threshold else 1
+            health_status = 'invalid' if fail_count >= fail_threshold else 'error'
+            last_check_error = error_message[:500]
+
+        conn.execute(
+            """UPDATE sources
+               SET health_status = ?, last_checked_at = CURRENT_TIMESTAMP,
+                   last_check_error = ?, fail_count = ?, is_valid = ?
+               WHERE id = ?""",
+            (health_status, last_check_error, fail_count, is_valid, source_id)
+        )
+        updated = conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
+        return dict(updated) if updated else None
 
 
 def delete_sources_for_episode(episode_id: int) -> int:

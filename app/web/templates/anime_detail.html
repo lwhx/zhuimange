@@ -73,7 +73,8 @@
 
         <!-- 操作按钮 -->
         <div class="anime-detail__actions">
-            <button type="button" class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{ anime.id }})">🔄 同步视频源</button>
+            <button type="button" class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{ anime.id }}, 'incremental')">⚡ 同步视频源</button>
+            <button type="button" class="btn btn--secondary btn--sm" id="full-sync-btn" onclick="syncAnime({{ anime.id }}, 'full')">♻ 全量刷新</button>
             <!-- 同步进度条 -->
             <div id="sync-progress" style="display:none;flex:1;min-width:200px;">
                 <div style="display:flex;align-items:center;gap:8px;">
