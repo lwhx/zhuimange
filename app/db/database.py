@@ -458,6 +458,16 @@ def get_sources_for_episode(episode_id: int) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def delete_sources_for_episode(episode_id: int) -> int:
+    """删除指定集数的全部视频源"""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM sources WHERE episode_id = ?",
+            (episode_id,)
+        )
+        return cursor.rowcount
+
+
 def get_episode_source_counts(anime_id: int) -> dict[int, int]:
     """获取动漫所有集数的视频源数量，返回 {episode_id: count}"""
     with get_connection() as conn:

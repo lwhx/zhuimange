@@ -17,6 +17,7 @@ const ThemeManager = {
     MODE_KEY: 'zhuimange-theme-mode',
 
     themes: [
+        { id: 'anime-cyber', name: '动漫赛博', icon: '🦾' },
         { id: 'neon-purple', name: '霓虹紫', icon: '💜' },
         { id: 'ocean-blue', name: '海洋蓝', icon: '🌊' },
         { id: 'sunset-orange', name: '日落橙', icon: '🌅' },
@@ -29,7 +30,7 @@ const ThemeManager = {
         const savedMode = localStorage.getItem(this.MODE_KEY);
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-        const theme = savedTheme || 'neon-purple';
+        const theme = savedTheme || 'anime-cyber';
         const mode = savedMode || (prefersDark ? 'dark' : 'light');
 
         this.applyTheme(theme, mode, false);
@@ -69,7 +70,7 @@ const ThemeManager = {
     },
 
     getCurrentTheme() {
-        const saved = localStorage.getItem(this.STORAGE_KEY) || 'neon-purple';
+        const saved = localStorage.getItem(this.STORAGE_KEY) || 'anime-cyber';
         return this.themes.find(t => t.id === saved) || this.themes[0];
     },
 

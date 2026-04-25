@@ -203,10 +203,18 @@ def find_sources_for_episode(
     # 按分数排序
     scored_videos.sort(key=lambda x: x["match_score"], reverse=True)
 
+    # 强制重新搜索时，搜索流程已完成，此时用新结果替换该集旧视频源
+    if force:
+        deleted_count = db.delete_sources_for_episode(episode["id"])
+        logger.info(
+            f"强制搜索清理旧视频源: {anime['title_cn']} 第{episode_num}集 "
+            f"({deleted_count}个)"
+        )
+
     # 保存到数据库
     max_sources = config.MAX_SOURCES_PER_EPISODE
     for video in scored_videos[:max_sources]:
-        source_id = db.add_source({
+        db.add_source({
             "episode_id": episode["id"],
             "video_id": video["video_id"],
             "title": video.get("title", ""),
