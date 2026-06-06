@@ -56,8 +56,13 @@ def run_anime_sync(
         is_manual = anime.get("tmdb_id") is None
 
         _refresh_tmdb_episodes(anime_id, anime, emit)
-        if is_manual or config.DISCOVER_TMDB_LATEST_EPISODES:
+        if is_manual:
             _discover_latest_episodes(anime_id, anime, emit)
+        elif config.DISCOVER_TMDB_LATEST_EPISODES:
+            logger.info(
+                "已忽略 DISCOVER_TMDB_LATEST_EPISODES：TMDB 动漫仅使用 TMDB 集数源，"
+                f"anime_id={anime_id}"
+            )
 
         episodes = db.get_episodes(anime_id)
         episodes.reverse()  # 从最新集开始，更符合追更场景
@@ -201,6 +206,17 @@ def _refresh_tmdb_episodes(anime_id: int, anime: dict, emit: Optional[SyncEmitte
         tmdb_episodes = get_tmdb_client().get_all_episodes(tmdb_id, detail["seasons"])
         if not tmdb_episodes:
             return
+
+        tmdb_nums = {
+            ep.get("absolute_num", 0)
+            for ep in tmdb_episodes
+            if ep.get("absolute_num", 0) > 0
+        }
+        deleted_count = db.delete_episodes_not_in_absolute_nums(anime_id, tmdb_nums)
+        if deleted_count:
+            logger.info(
+                f"TMDB 更新: 清理 {deleted_count} 个非 TMDB 集数记录，anime_id={anime_id}"
+            )
 
         existing_nums = {ep["absolute_num"] for ep in db.get_episodes(anime_id)}
         new_episodes = [

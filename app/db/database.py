@@ -572,6 +572,43 @@ def add_episodes(anime_id: int, episodes_data: list[dict]) -> None:
             )
 
 
+def delete_episodes_not_in_absolute_nums(anime_id: int, keep_nums: set[int]) -> int:
+    """删除不在指定 absolute_num 集合内的集数，并同步 watched_ep 统计。"""
+    if not keep_nums:
+        return 0
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, absolute_num FROM episodes WHERE anime_id = ?",
+            (anime_id,),
+        ).fetchall()
+        stale_ids = [
+            row["id"]
+            for row in rows
+            if row["absolute_num"] not in keep_nums
+        ]
+
+        deleted_count = 0
+        chunk_size = 500
+        for index in range(0, len(stale_ids), chunk_size):
+            chunk = stale_ids[index:index + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            cursor = conn.execute(
+                f"DELETE FROM episodes WHERE id IN ({placeholders})",
+                chunk,
+            )
+            deleted_count += cursor.rowcount
+
+        if deleted_count:
+            conn.execute(
+                """UPDATE animes SET watched_ep = (
+                    SELECT COUNT(*) FROM episodes WHERE anime_id = ? AND watched = 1
+                ), updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                (anime_id, anime_id),
+            )
+        return deleted_count
+
+
 def mark_episode_watched(anime_id: int, ep_num: int, watched: bool = True) -> None:
     """标记集数已看/未看"""
     with get_connection() as conn:

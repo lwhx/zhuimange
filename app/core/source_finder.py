@@ -3,6 +3,7 @@
 """
 import json
 import logging
+import re
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app import config
@@ -17,7 +18,37 @@ logger = logging.getLogger(__name__)
 MANUAL_MATCH_THRESHOLD = 30
 
 
-def _get_search_keywords(anime: dict, episode_num: int, aliases: list[str] = None) -> list[str]:
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    """按顺序去重，避免重复关键词浪费搜索配额。"""
+    seen = set()
+    unique_items = []
+    for item in items:
+        value = item.strip()
+        key = value.lower()
+        if value and key not in seen:
+            seen.add(key)
+            unique_items.append(value)
+    return unique_items
+
+
+def _is_generic_episode_title(title: str) -> bool:
+    """过滤 TMDB 中常见的无信息量单集名，如 Episode 1 / 第1集。"""
+    normalized = title.strip()
+    if not normalized:
+        return True
+    return bool(re.fullmatch(
+        r"(?:episode|ep|e|第)\s*\d+\s*(?:集|话|話)?",
+        normalized,
+        flags=re.IGNORECASE,
+    ))
+
+
+def _get_search_keywords(
+    anime: dict,
+    episode_num: int,
+    aliases: list[str] = None,
+    episode: Optional[dict] = None,
+) -> list[str]:
     """
     生成搜索关键词列表
 
@@ -44,12 +75,19 @@ def _get_search_keywords(anime: dict, episode_num: int, aliases: list[str] = Non
             seen.add(name.lower())
             unique_names.append(name)
 
+    search_names = unique_names[:config.SEARCH_KEYWORDS_LIMIT]
     keywords = []
-    for name in unique_names[:config.SEARCH_KEYWORDS_LIMIT]:
+
+    episode_title = (episode or {}).get("title", "").strip()
+    if anime.get("tmdb_id") is not None and episode_title and not _is_generic_episode_title(episode_title):
+        for name in search_names:
+            keywords.append(f"{name} {episode_title}")
+
+    for name in search_names:
         keywords.append(f"{name} 第{episode_num}集")
         keywords.append(f"{name} EP{episode_num}")
 
-    return keywords
+    return _dedupe_keep_order(keywords)
 
 
 def _apply_source_rules(videos: list[dict], anime_id: int) -> list[dict]:
@@ -137,7 +175,7 @@ def find_sources_for_episode(
     aliases.extend(db.get_global_aliases_by_title(anime["title_cn"]))
 
     # 生成搜索关键词
-    keywords = _get_search_keywords(anime, episode_num, aliases)
+    keywords = _get_search_keywords(anime, episode_num, aliases, episode)
     logger.info(f"搜索关键词: {keywords}")
 
     # 并发搜索并收集所有结果
@@ -287,6 +325,13 @@ def discover_latest_episode(anime_id: int) -> int:
     """
     anime = db.get_anime(anime_id)
     if not anime:
+        return 0
+
+    if anime.get("tmdb_id") is not None:
+        logger.info(
+            "TMDB 动漫跳过网页最新集数探测，使用 TMDB 集数作为准确信息源: "
+            f"{anime.get('title_cn', anime_id)}"
+        )
         return 0
 
     title = anime.get("title_cn", "")
