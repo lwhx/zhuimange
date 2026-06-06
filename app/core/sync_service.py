@@ -5,6 +5,7 @@
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from typing import Any, Callable, Optional
 
 from app import config
@@ -64,7 +65,8 @@ def run_anime_sync(
                 f"anime_id={anime_id}"
             )
 
-        episodes = db.get_episodes(anime_id)
+        today = date.today().isoformat()
+        episodes = db.filter_aired_episodes(anime, db.get_episodes(anime_id), today)
         episodes.reverse()  # 从最新集开始，更符合追更场景
         total = len(episodes)
 
@@ -223,20 +225,23 @@ def _refresh_tmdb_episodes(anime_id: int, anime: dict, emit: Optional[SyncEmitte
             ep for ep in tmdb_episodes
             if ep.get("absolute_num", 0) not in existing_nums
         ]
-        new_ep_nums = [
-            ep.get("absolute_num", 0)
-            for ep in new_episodes
-            if ep.get("absolute_num", 0) > 0
-        ]
         if new_episodes:
             db.add_episodes(anime_id, new_episodes)
             logger.info(f"TMDB 更新: 新增 {len(new_episodes)} 个集数记录")
 
         db.update_anime(anime_id, {"total_episodes": detail.get("total_episodes", 0)})
+        today = date.today().isoformat()
+        aired_new_episodes = db.filter_aired_episodes(anime, new_episodes, today)
+        aired_total = len(db.filter_aired_episodes(anime, db.get_episodes(anime_id), today))
+        new_ep_nums = [
+            ep.get("absolute_num", 0)
+            for ep in aired_new_episodes
+            if ep.get("absolute_num", 0) > 0
+        ]
         _emit(emit, {
             "type": "discover",
             "new_episodes": new_ep_nums,
-            "total": len(db.get_episodes(anime_id)),
+            "total": aired_total,
         })
     except Exception as e:
         logger.warning(f"TMDB 集数更新失败: {e}")

@@ -190,7 +190,8 @@ def get_anime(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
-    episodes = db.get_episodes(anime_id)
+    today = date.today().isoformat()
+    episodes = db.filter_aired_episodes(anime, db.get_episodes(anime_id), today)
     aliases = db.get_aliases(anime_id)
     rules = db.get_source_rules(anime_id)
     source_counts = db.get_episode_source_counts(anime_id)
@@ -201,6 +202,7 @@ def get_anime(anime_id):
     anime["episodes"] = episodes
     anime["aliases"] = aliases
     anime["rules"] = rules
+    anime["watched_ep"] = sum(1 for ep in episodes if ep.get("watched"))
     anime["unwatched_count"] = sum(1 for ep in episodes if not ep.get("watched"))
 
     return success_response(anime, message="获取动漫详情成功")
@@ -215,6 +217,12 @@ def mark_watched(anime_id, ep_num):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
+    episode = db.get_episode_by_num(anime_id, ep_num)
+    if not episode:
+        return error_response("集数不存在", code="EPISODE_NOT_FOUND", status_code=404)
+    if not db.episode_is_aired(anime, episode, date.today().isoformat()):
+        return error_response("集数尚未开播", code="EPISODE_NOT_AIRED", status_code=400)
+
     db.mark_episode_watched(anime_id, ep_num, True)
     _clear_anime_cache(anime_id)
     return success_response(message="标记已看成功")
@@ -226,6 +234,12 @@ def mark_unwatched(anime_id, ep_num):
     anime = db.get_anime(anime_id)
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
+
+    episode = db.get_episode_by_num(anime_id, ep_num)
+    if not episode:
+        return error_response("集数不存在", code="EPISODE_NOT_FOUND", status_code=404)
+    if not db.episode_is_aired(anime, episode, date.today().isoformat()):
+        return error_response("集数尚未开播", code="EPISODE_NOT_AIRED", status_code=400)
 
     db.mark_episode_watched(anime_id, ep_num, False)
     _clear_anime_cache(anime_id)
@@ -243,16 +257,27 @@ def update_progress(anime_id):
     anime = db.get_anime(anime_id)
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
+    try:
+        watched_ep = int(watched_ep)
+    except (TypeError, ValueError):
+        return error_response("watched_ep 必须是数字")
 
     # 批量标记已看
+    today = date.today().isoformat()
     episodes = db.get_episodes(anime_id)
+    aired_episodes = db.filter_aired_episodes(anime, episodes, today)
+    if aired_episodes:
+        watched_ep = min(watched_ep, max(ep["absolute_num"] for ep in aired_episodes))
+    watched_count = 0
     for ep in episodes:
-        if ep["absolute_num"] <= watched_ep:
+        watched = db.episode_is_aired(anime, ep, today) and ep["absolute_num"] <= watched_ep
+        if watched:
+            watched_count += 1
             db.mark_episode_watched(anime_id, ep["absolute_num"], True)
         else:
             db.mark_episode_watched(anime_id, ep["absolute_num"], False)
 
-    db.update_anime(anime_id, {"watched_ep": watched_ep})
+    db.update_anime(anime_id, {"watched_ep": watched_count})
     _clear_anime_cache(anime_id)
     return success_response(message="更新观看进度成功")
 
@@ -262,9 +287,15 @@ def update_progress(anime_id):
 @api.route('/anime/<int:anime_id>/episode/<int:ep_num>/sources')
 def get_sources(anime_id, ep_num):
     """获取集数的视频源"""
+    anime = db.get_anime(anime_id)
+    if not anime:
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
+
     episode = db.get_episode_by_num(anime_id, ep_num)
     if not episode:
         return error_response("集数不存在", code="EPISODE_NOT_FOUND", status_code=404)
+    if not db.episode_is_aired(anime, episode, date.today().isoformat()):
+        return error_response("集数尚未开播", code="EPISODE_NOT_AIRED", status_code=400)
 
     sources = db.get_sources_for_episode(episode["id"])
 
@@ -280,6 +311,16 @@ def get_sources(anime_id, ep_num):
 @api.route('/anime/<int:anime_id>/episode/<int:ep_num>/find_sources', methods=['POST'])
 def find_sources(anime_id, ep_num):
     """主动搜索视频源"""
+    anime = db.get_anime(anime_id)
+    if not anime:
+        return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
+
+    episode = db.get_episode_by_num(anime_id, ep_num)
+    if not episode:
+        return error_response("集数不存在", code="EPISODE_NOT_FOUND", status_code=404)
+    if not db.episode_is_aired(anime, episode, date.today().isoformat()):
+        return error_response("集数尚未开播", code="EPISODE_NOT_AIRED", status_code=400)
+
     force = request.json.get('force', False) if request.json else False
     sources = find_sources_for_episode(anime_id, ep_num, force=force)
     return success_response({"count": len(sources)}, message=f"找到 {len(sources)} 个视频源")
@@ -290,7 +331,9 @@ def check_sources(anime_id, ep_num):
     """检测集数视频源可用性"""
     result = check_episode_sources_health(anime_id, ep_num)
     if not result.get("success"):
-        return error_response(result.get("message", "检测失败"), code="EPISODE_NOT_FOUND", status_code=404)
+        code = result.get("code", "EPISODE_NOT_FOUND")
+        status_code = 400 if code == "EPISODE_NOT_AIRED" else 404
+        return error_response(result.get("message", "检测失败"), code=code, status_code=status_code)
     return success_response(result, message=result.get("message", "检测完成"))
 
 

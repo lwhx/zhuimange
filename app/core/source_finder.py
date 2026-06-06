@@ -4,6 +4,7 @@
 import json
 import logging
 import re
+from datetime import date
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app import config
@@ -161,6 +162,12 @@ def find_sources_for_episode(
     episode = db.get_episode_by_num(anime_id, episode_num)
     if not episode:
         logger.error(f"集数不存在: anime_id={anime_id}, ep={episode_num}")
+        return []
+    if not db.episode_is_aired(anime, episode, date.today().isoformat()):
+        logger.info(
+            f"跳过未开播集数的视频源搜索: {anime['title_cn']} 第{episode_num}集 "
+            f"(air_date={episode.get('air_date', '')})"
+        )
         return []
 
     # 检查缓存（非强制模式下）

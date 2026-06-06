@@ -19,7 +19,7 @@ from app import config
 from app.db.database import (
     init_db, get_all_animes_with_stats, get_anime, get_episodes,
     get_sources_for_episode, get_episode_source_counts, get_aliases,
-    get_setting, set_setting,
+    get_setting, set_setting, filter_aired_episodes, episode_is_aired,
 )
 from app.core.link_converter import format_duration, format_view_count, invidious_to_youtube
 from app.core.auth import hash_password, verify_password, is_bcrypt_hash
@@ -268,16 +268,9 @@ def _register_routes(app: Flask):
         aliases = get_aliases(anime_id)
         source_counts = get_episode_source_counts(anime_id)
 
-        today = date.today().isoformat()
-        is_tmdb = anime.get("tmdb_id") is not None
-        aired_episodes = []
-        for ep in episodes:
-            if is_tmdb:
-                air = ep.get("air_date", "")
-                if not air or air > today:
-                    continue
+        aired_episodes = filter_aired_episodes(anime, episodes, date.today().isoformat())
+        for ep in aired_episodes:
             ep["source_count"] = source_counts.get(ep["id"], 0)
-            aired_episodes.append(ep)
 
         sort_order = get_setting("episode_sort_order", "desc")
         if sort_order == "desc":
@@ -286,6 +279,7 @@ def _register_routes(app: Flask):
         anime["episodes"] = aired_episodes
         anime["aliases"] = aliases
         anime["sort_order"] = sort_order
+        anime["watched_ep"] = sum(1 for ep in aired_episodes if ep.get("watched"))
         anime["unwatched_count"] = sum(1 for ep in aired_episodes if not ep.get("watched"))
 
         return render_template('anime_detail.html', anime=anime)
@@ -297,6 +291,8 @@ def _register_routes(app: Flask):
         episode = get_episode_by_num(anime_id, ep_num)
         if not episode:
             return "集数不存在", 404
+        if not episode_is_aired(anime, episode, date.today().isoformat()):
+            return "集数尚未开播", 404
 
         sources = get_sources_for_episode(episode["id"], include_invalid=True)
         for source in sources:

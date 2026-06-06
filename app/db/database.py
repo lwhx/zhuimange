@@ -432,15 +432,24 @@ def get_all_animes_with_stats(today: str) -> list[dict]:
                 END) AS episode_count,
                 COUNT(CASE
                     WHEN (a.tmdb_id IS NULL OR (e.air_date != '' AND e.air_date <= ?))
+                         AND e.watched = 1 THEN e.id
+                END) AS aired_watched_ep,
+                COUNT(CASE
+                    WHEN (a.tmdb_id IS NULL OR (e.air_date != '' AND e.air_date <= ?))
                          AND e.watched = 0 THEN e.id
                 END) AS unwatched_count
             FROM animes a
             LEFT JOIN episodes e ON a.id = e.anime_id
             GROUP BY a.id
             ORDER BY a.updated_at DESC""",
-            (today, today)
+            (today, today, today)
         ).fetchall()
-        return [dict(row) for row in rows]
+        animes = []
+        for row in rows:
+            anime = dict(row)
+            anime["watched_ep"] = anime.pop("aired_watched_ep", anime.get("watched_ep", 0))
+            animes.append(anime)
+        return animes
 
 
 def get_anime(anime_id: int) -> Optional[dict]:
@@ -532,6 +541,24 @@ def get_episodes(anime_id: int) -> list[dict]:
             (anime_id,)
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def episode_is_aired(anime: dict, episode: dict, today: str) -> bool:
+    """判断集数是否可进入追更视图：手动作品全部可见，TMDB 作品只显示已开播集。"""
+    if anime.get("tmdb_id") is None:
+        return True
+
+    air_date = episode.get("air_date", "")
+    return bool(air_date and air_date <= today)
+
+
+def filter_aired_episodes(anime: dict, episodes: list[dict], today: str) -> list[dict]:
+    """过滤出追更可见/可同步的已开播集数。"""
+    return [
+        episode
+        for episode in episodes
+        if episode_is_aired(anime, episode, today)
+    ]
 
 
 def get_episode(episode_id: int) -> Optional[dict]:

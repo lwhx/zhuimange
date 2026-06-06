@@ -2,6 +2,7 @@
 追漫阁 - 视频源健康检测
 """
 import logging
+from datetime import date
 from typing import Any
 from app.core.invidious_client import get_invidious_client
 from app.db import database as db
@@ -57,11 +58,38 @@ def check_source_health(source: dict[str, Any]) -> dict[str, Any]:
 
 def check_episode_sources_health(anime_id: int, episode_num: int) -> dict[str, Any]:
     """检测指定集数全部视频源健康状态"""
+    anime = db.get_anime(anime_id)
+    if not anime:
+        return {
+            "success": False,
+            "message": "动漫不存在",
+            "code": "ANIME_NOT_FOUND",
+            "checked": 0,
+            "available": 0,
+            "invalid": 0,
+            "error": 0,
+            "unknown": 0,
+            "sources": [],
+        }
+
     episode = db.get_episode_by_num(anime_id, episode_num)
     if not episode:
         return {
             "success": False,
             "message": "集数不存在",
+            "code": "EPISODE_NOT_FOUND",
+            "checked": 0,
+            "available": 0,
+            "invalid": 0,
+            "error": 0,
+            "unknown": 0,
+            "sources": [],
+        }
+    if not db.episode_is_aired(anime, episode, date.today().isoformat()):
+        return {
+            "success": False,
+            "message": "集数尚未开播",
+            "code": "EPISODE_NOT_AIRED",
             "checked": 0,
             "available": 0,
             "invalid": 0,

@@ -1194,6 +1194,7 @@ async function _refreshEpisodeList(animeId) {
 
         const episodes = anime.episodes || [];
         const grid = document.querySelector('.episodes-grid');
+        const visibleNums = new Set(episodes.map(ep => Number(ep.absolute_num)));
 
         if (grid && episodes.length > 0) {
             const emptyState = document.querySelector('.episodes-section .empty-state');
@@ -1201,7 +1202,12 @@ async function _refreshEpisodeList(animeId) {
 
             const existingNums = new Set();
             grid.querySelectorAll('.episode-item').forEach(el => {
-                existingNums.add(parseInt(el.dataset.ep));
+                const epNum = Number(el.dataset.ep);
+                if (visibleNums.has(epNum)) {
+                    existingNums.add(epNum);
+                } else {
+                    el.remove();
+                }
             });
 
             for (const ep of episodes) {
@@ -1215,6 +1221,8 @@ async function _refreshEpisodeList(animeId) {
                 const item = createEpisodeItem(animeId, ep);
                 insertEpisodeItemSorted(grid, item);
             }
+        } else if (grid && episodes.length === 0) {
+            grid.querySelectorAll('.episode-item').forEach(el => el.remove());
         } else if (!grid && episodes.length > 0) {
             const section = document.querySelector('.episodes-section');
             if (section) {
