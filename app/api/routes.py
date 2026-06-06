@@ -5,10 +5,10 @@ import logging
 from typing import Optional
 from datetime import date, datetime
 from flask import Blueprint, request, jsonify, current_app
-from app import config
 from app.db import database as db
 from app.core.tmdb_client import get_tmdb_client
-from app.core.source_finder import find_sources_for_episode, sync_anime_sources
+from app.core.source_finder import find_sources_for_episode
+from app.core.sync_queue import sync_queue
 from app.core.source_health import check_episode_sources_health
 from app.core.invidious_health import check_invidious_health, get_last_invidious_health
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
@@ -22,11 +22,24 @@ api = Blueprint('api', __name__, url_prefix='/api')
 def _clear_anime_cache(anime_id: Optional[int] = None):
     """清除相关缓存，使数据变更立即生效"""
     try:
-        c = current_app.extensions.get('cache')
-        if c:
-            c.delete('index_page')
-            if anime_id:
-                c.delete(f'anime_detail_{anime_id}')
+        cache_extension = current_app.extensions.get('cache')
+        cache_clients = []
+        if hasattr(cache_extension, 'delete'):
+            cache_clients.append(cache_extension)
+        elif isinstance(cache_extension, dict):
+            cache_clients.extend(client for client in cache_extension.keys() if hasattr(client, 'delete'))
+            cache_clients.extend(client for client in cache_extension.values() if hasattr(client, 'delete'))
+
+        keys = ['index_page']
+        if anime_id:
+            keys.extend([
+                f'anime_detail_{anime_id}_asc',
+                f'anime_detail_{anime_id}_desc',
+            ])
+
+        for client in cache_clients:
+            for key in keys:
+                client.delete(key)
     except Exception as e:
         logger.warning(f"清除缓存失败: {e}")
 
@@ -285,24 +298,46 @@ def check_sources(anime_id, ep_num):
 
 @api.route('/anime/<int:anime_id>/sync', methods=['POST'])
 def sync_anime(anime_id):
-    """同步动漫视频源"""
+    """提交动漫视频源同步任务"""
     anime = db.get_anime(anime_id)
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
     data = request.json or {}
     mode = data.get('mode', 'incremental')
-    result = sync_anime_sources(anime_id, mode=mode)
-    if result.get("success"):
-        return success_response(result, message="同步完成")
-    return error_response(result.get("message", "同步失败"), status_code=500)
+    task, created = sync_queue.enqueue(anime_id, mode=mode, sync_type="manual")
+    message = "同步任务已加入队列" if created else "该动漫已有同步任务正在执行"
+    return success_response(
+        {
+            "task": task.snapshot(),
+            "created": created,
+        },
+        message=message,
+        status_code=202 if created else 200,
+    )
+
+
+@api.route('/sync_tasks/<task_id>')
+def get_sync_task(task_id):
+    """获取同步任务状态"""
+    task = sync_queue.get_task_snapshot(task_id)
+    if not task:
+        return error_response("同步任务不存在", code="SYNC_TASK_NOT_FOUND", status_code=404)
+    return success_response(task, message="获取同步任务状态成功")
+
+
+@api.route('/sync_tasks/<task_id>/stream')
+def sync_task_stream(task_id):
+    """SSE 监听同步任务事件"""
+    task = sync_queue.get_task(task_id)
+    if not task:
+        return error_response("同步任务不存在", code="SYNC_TASK_NOT_FOUND", status_code=404)
+    return _stream_sync_task(task)
 
 
 @api.route('/anime/<int:anime_id>/sync_stream')
 def sync_anime_stream(anime_id):
-    """SSE 流式同步动漫视频源（实时进度）"""
-    import json as _json
-    from flask import Response, stream_with_context
+    """兼容旧入口：提交/复用同步任务并流式返回进度"""
 
     mode = request.args.get('mode', 'incremental')
     if mode not in {'incremental', 'full'}:
@@ -312,128 +347,37 @@ def sync_anime_stream(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
+    task, _created = sync_queue.enqueue(anime_id, mode=mode, sync_type="manual")
+    return _stream_sync_task(task)
+
+
+def _stream_sync_task(task):
+    """把任务事件缓冲区转换成 SSE 响应。"""
+    import json as _json
+    from flask import Response, stream_with_context
+
     def generate():
-        from app.core.source_finder import find_sources_for_episode, discover_latest_episode, should_sync_episode
-        from app.core.tmdb_client import get_tmdb_client
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        last_seq = 0
+        terminal_status = {"success", "error"}
+        while True:
+            with task.condition:
+                events = [event for event in task.events if event.get("_seq", 0) > last_seq]
+                while not events and task.status not in terminal_status:
+                    notified = task.condition.wait(timeout=15)
+                    events = [event for event in task.events if event.get("_seq", 0) > last_seq]
+                    if not notified and not events:
+                        break
 
-        try:
-            is_manual = anime.get("tmdb_id") is None
+            if not events and task.status not in terminal_status:
+                yield f"data: {_json.dumps({'type': 'heartbeat', 'task_id': task.id}, ensure_ascii=False)}\n\n"
+                continue
 
-            # ===== 阶段 0: TMDB 动漫更新集数 =====
-            tmdb_id = anime.get("tmdb_id")
-            if tmdb_id:
-                yield f"data: {_json.dumps({'type': 'discovering', 'message': '正在从 TMDB 更新集数...'}, ensure_ascii=False)}\n\n"
-                try:
-                    detail = get_tmdb_client().get_anime_detail(tmdb_id)
-                    if detail and detail.get("seasons"):
-                        tmdb_episodes = get_tmdb_client().get_all_episodes(tmdb_id, detail["seasons"])
-                        if tmdb_episodes:
-                            existing_episodes = db.get_episodes(anime_id)
-                            existing_nums = {ep["absolute_num"] for ep in existing_episodes}
-                            new_episodes = []
-                            for ep in tmdb_episodes:
-                                if ep.get("absolute_num", 0) not in existing_nums:
-                                    new_episodes.append(ep)
-                            if new_episodes:
-                                new_ep_nums = [ep.get("absolute_num", 0) for ep in new_episodes if ep.get("absolute_num", 0) > 0]
-                                db.add_episodes(anime_id, new_episodes)
-                                logger.info(f"TMDB 更新: 新增 {len(new_episodes)} 个集数记录")
-                            else:
-                                new_ep_nums = []
-                            db.update_anime(anime_id, {"total_episodes": detail.get("total_episodes", 0)})
-                            all_episodes = db.get_episodes(anime_id)
-                            yield f"data: {_json.dumps({'type': 'discover', 'new_episodes': new_ep_nums, 'total': len(all_episodes)}, ensure_ascii=False)}\n\n"
-                except Exception as e:
-                    logger.warning(f"TMDB 集数更新失败: {e}")
+            for event in events:
+                last_seq = max(last_seq, int(event.get("_seq", 0)))
+                yield f"data: {_json.dumps(event, ensure_ascii=False)}\n\n"
 
-            # ===== 阶段 1: 手动动漫实时探测集数 =====
-            if is_manual:
-                yield f"data: {_json.dumps({'type': 'discovering', 'message': '正在探测集数...'}, ensure_ascii=False)}\n\n"
-
-                existing_nums_before = {ep["absolute_num"] for ep in db.get_episodes(anime_id)}
-                discovered = discover_latest_episode(anime_id)
-                if discovered > 0:
-                    all_eps_after = db.get_episodes(anime_id)
-                    new_ep_nums = [ep["absolute_num"] for ep in all_eps_after if ep["absolute_num"] not in existing_nums_before]
-                    yield f"data: {_json.dumps({'type': 'discover', 'new_episodes': new_ep_nums, 'total': len(all_eps_after)}, ensure_ascii=False)}\n\n"
-
-            # ===== 阶段 2: 同步视频源 =====
-            episodes = db.get_episodes(anime_id)
-            episodes.reverse()  # 从最新集开始同步
-            total = len(episodes)
-
-            yield f"data: {_json.dumps({'type': 'start', 'total': total, 'mode': mode}, ensure_ascii=False)}\n\n"
-
-            sync_items = []
-            skipped = 0
-            for ep in episodes:
-                should_sync, reason = should_sync_episode(ep, mode)
-                if should_sync:
-                    sync_items.append((ep, reason))
-                else:
-                    skipped += 1
-
-            yield f"data: {_json.dumps({'type': 'plan', 'mode': mode, 'total': total, 'target': len(sync_items), 'skipped': skipped}, ensure_ascii=False)}\n\n"
-
-            synced = 0
-            total_sources = 0
-            done_count = 0
-            first_video_id = None
-            BATCH_SIZE = max(1, config.EPISODE_SYNC_WORKERS)
-
-            def _sync_ep(ep, reason):
-                ep_num = ep["absolute_num"]
-                try:
-                    sources = find_sources_for_episode(anime_id, ep_num, force=(mode == 'full'))
-                    return ep_num, len(sources) if sources else 0, reason
-                except Exception as e:
-                    logger.error(f"同步失败: {anime['title_cn']} 第{ep_num}集 - {e}")
-                    return ep_num, 0, reason
-
-            max_workers = min(BATCH_SIZE, len(sync_items)) if sync_items else 1
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = {executor.submit(_sync_ep, ep, reason): ep for ep, reason in sync_items}
-                for future in as_completed(futures):
-                    ep_num, count, reason = future.result()
-                    done_count += 1
-                    if count > 0:
-                        synced += 1
-                        total_sources += count
-                        # 记录第一个有源的视频 ID（用于封面）
-                        if first_video_id is None:
-                            ep_obj = next((e for e in episodes if e["absolute_num"] == ep_num), None)
-                            if ep_obj:
-                                srcs = db.get_sources_for_episode(ep_obj.get("id", 0))
-                                if srcs:
-                                    first_video_id = srcs[0].get("video_id", "")
-                    yield f"data: {_json.dumps({'type': 'episode', 'current': done_count, 'total': len(sync_items), 'overall_total': total, 'skipped': skipped, 'ep_num': ep_num, 'source_count': count, 'reason': reason}, ensure_ascii=False)}\n\n"
-
-            # ===== 阶段 3: 封面和收尾 =====
-            db.touch_anime_sync(anime_id)
-
-            # 手动动漫自动设置封面（高清缩略图）
-            poster_url = None
-            if is_manual:
-                a = db.get_anime(anime_id)
-                if not a.get("poster_url") and first_video_id:
-                    poster_url = f"https://img.youtube.com/vi/{first_video_id}/hqdefault.jpg"
-                    db.update_anime(anime_id, {"poster_url": poster_url})
-                    logger.info(f"自动设置封面(高清缩略图): {poster_url}")
-                    # 推送封面更新事件
-                    yield f"data: {_json.dumps({'type': 'poster', 'poster_url': poster_url}, ensure_ascii=False)}\n\n"
-
-            db.add_sync_log(
-                anime_id=anime_id, sync_type="manual",
-                episodes_synced=synced, sources_found=total_sources,
-                status="success",
-                message=f"同步完成: 模式={mode}, 同步 {synced}/{len(sync_items)} 集，跳过 {skipped}/{total} 集"
-            )
-
-            yield f"data: {_json.dumps({'type': 'done', 'mode': mode, 'synced': synced, 'skipped': skipped, 'target': len(sync_items), 'total': total, 'total_sources': total_sources}, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            logger.exception(f"同步流发生错误: {e}")
-            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+            if task.status in terminal_status:
+                break
 
     return Response(
         stream_with_context(generate()),
@@ -518,6 +462,7 @@ def update_rules(anime_id):
 
     data = request.json or {}
     db.set_source_rules(anime_id, data)
+    _clear_anime_cache(anime_id)
     return success_response(message="更新搜索规则成功")
 
 
@@ -532,6 +477,7 @@ def add_anime_alias(anime_id):
         return error_response("缺少别名")
 
     db.add_alias(anime_id, alias)
+    _clear_anime_cache(anime_id)
     return success_response(message="添加别名成功")
 
 

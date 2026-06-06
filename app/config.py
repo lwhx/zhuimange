@@ -102,6 +102,8 @@ EXCLUDE_KEYWORDS: list[str] = [
 # ==================== 缓存配置 ====================
 SOURCE_CACHE_DAYS = 7
 SYNC_LOG_KEEP_DAYS = 90
+SYNC_TASK_RETENTION_SECONDS = int(os.getenv("SYNC_TASK_RETENTION_SECONDS", "3600"))
+DISCOVER_TMDB_LATEST_EPISODES = os.getenv("DISCOVER_TMDB_LATEST_EPISODES", "false").lower() == "true"
 
 # ==================== Telegram 推送 ====================
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")

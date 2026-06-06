@@ -6,6 +6,8 @@ import os
 import logging
 import threading
 from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 from app import config
 
@@ -64,6 +66,73 @@ def _return_connection(conn: sqlite3.Connection) -> None:
         conn.close()
     except sqlite3.Error:
         pass
+
+
+def close_connection_pool() -> None:
+    """关闭连接池中的空闲连接，主要用于测试和进程退出清理。"""
+    with _pool_lock:
+        while _connection_pool:
+            conn = _connection_pool.pop()
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+
+
+def _has_duplicate_prone_rows(conn: sqlite3.Connection) -> bool:
+    checks = (
+        ("episodes", "anime_id, COALESCE(absolute_num, 0)"),
+        ("sources", "episode_id, COALESCE(video_id, '')"),
+        ("custom_aliases", "anime_id, alias"),
+    )
+    for table_name, columns in checks:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        if not exists:
+            continue
+        row = conn.execute(
+            f"""
+            SELECT 1
+            FROM {table_name}
+            GROUP BY {columns}
+            HAVING COUNT(*) > 1
+            LIMIT 1
+            """
+        ).fetchone()
+        if row:
+            return True
+    return False
+
+
+def _backup_sqlite_database_for_cleanup(conn: sqlite3.Connection) -> None:
+    """在传统初始化执行重复数据清理前，为文件数据库创建一次备份。"""
+    if not _has_duplicate_prone_rows(conn):
+        return
+
+    row = conn.execute("PRAGMA database_list").fetchone()
+    if not row:
+        return
+    db_path = row[2]
+    if not db_path or db_path == ":memory:":
+        return
+
+    source_path = Path(db_path)
+    if not source_path.exists():
+        return
+
+    backup_path = source_path.with_name(
+        f"{source_path.stem}.pre-dedup-{datetime.now().strftime('%Y%m%d%H%M%S')}{source_path.suffix}"
+    )
+    source = sqlite3.connect(str(source_path))
+    destination = sqlite3.connect(str(backup_path))
+    try:
+        source.backup(destination)
+    finally:
+        source.close()
+        destination.close()
+    logger.info(f"重复数据清理前已创建 SQLite 备份: {backup_path}")
 
 
 def get_db_path() -> str:
@@ -264,11 +333,61 @@ def init_db(use_migrations: Optional[bool] = None) -> None:
         )''')
 
         # 创建索引
+        _backup_sqlite_database_for_cleanup(conn)
+        c.execute("UPDATE episodes SET absolute_num = 0 WHERE absolute_num IS NULL")
+        c.execute("UPDATE sources SET video_id = '' WHERE video_id IS NULL")
+        c.execute("""
+            UPDATE sources
+            SET episode_id = (
+                SELECT MIN(e2.id)
+                FROM episodes e1
+                JOIN episodes e2
+                  ON e2.anime_id = e1.anime_id
+                 AND e2.absolute_num = e1.absolute_num
+                WHERE e1.id = sources.episode_id
+            )
+            WHERE episode_id IN (
+                SELECT e.id
+                FROM episodes e
+                WHERE e.id NOT IN (
+                    SELECT MIN(id)
+                    FROM episodes
+                    GROUP BY anime_id, absolute_num
+                )
+            )
+        """)
+        c.execute("""
+            DELETE FROM episodes
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM episodes
+                GROUP BY anime_id, absolute_num
+            )
+        """)
+        c.execute("""
+            DELETE FROM sources
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM sources
+                GROUP BY episode_id, video_id
+            )
+        """)
+        c.execute("""
+            DELETE FROM custom_aliases
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM custom_aliases
+                GROUP BY anime_id, alias
+            )
+        """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_episodes_anime_id ON episodes(anime_id)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_episodes_anime_absolute_num ON episodes(anime_id, absolute_num)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sources_episode_id ON sources(episode_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sources_video_id ON sources(video_id)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_sources_episode_video ON sources(episode_id, video_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_sync_logs_anime_id ON sync_logs(anime_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_custom_aliases_anime_id ON custom_aliases(anime_id)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_custom_aliases_anime_alias ON custom_aliases(anime_id, alias)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_global_aliases_title ON global_aliases(title)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_global_aliases_alias ON global_aliases(alias)")
 
@@ -553,16 +672,8 @@ def get_episode_source_counts(anime_id: int) -> dict[int, int]:
 def add_source(data: dict) -> int:
     """添加视频源"""
     with get_connection() as conn:
-        # 检查是否已存在
-        existing = conn.execute(
-            "SELECT id FROM sources WHERE episode_id = ? AND video_id = ?",
-            (data["episode_id"], data["video_id"])
-        ).fetchone()
-        if existing:
-            return existing["id"]
-
-        cursor = conn.execute(
-            """INSERT INTO sources
+        conn.execute(
+            """INSERT OR IGNORE INTO sources
                (episode_id, video_id, title, channel_id, channel_name,
                 duration, view_count, published_at, match_score)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -578,7 +689,13 @@ def add_source(data: dict) -> int:
                 data.get("match_score", 0),
             )
         )
-        return cursor.lastrowid
+        row = conn.execute(
+            "SELECT id FROM sources WHERE episode_id = ? AND video_id = ?",
+            (data["episode_id"], data["video_id"])
+        ).fetchone()
+        if not row:
+            raise sqlite3.IntegrityError("source insert failed")
+        return row["id"]
 
 
 # ==================== 别名 CRUD ====================

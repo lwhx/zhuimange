@@ -17,7 +17,7 @@ def check_and_sync():
     """
     检查并同步需要更新的动漫，同步完成后推送新集通知。
     """
-    from app.core.source_finder import sync_anime_sources
+    from app.core.sync_queue import sync_queue
 
     try:
         settings = db.get_all_settings()
@@ -44,7 +44,13 @@ def check_and_sync():
                 if notify_enabled:
                     pre_counts = db.get_episode_source_counts(anime["id"])
 
-                result = sync_anime_sources(anime["id"])
+                task, created = sync_queue.enqueue(anime["id"], mode="incremental", sync_type="auto")
+                if not created:
+                    logger.info(f"跳过自动同步，已有任务正在执行: {anime['title_cn']}")
+                    continue
+
+                task_snapshot = sync_queue.wait_for_completion(task.id)
+                result = (task_snapshot or {}).get("result") or {}
 
                 if result.get("success"):
                     synced_count += 1

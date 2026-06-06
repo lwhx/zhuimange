@@ -5,12 +5,10 @@ import json
 import logging
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 from app import config
 from app.core.invidious_client import get_invidious_client
-from app.core.tmdb_client import get_tmdb_client
 from app.core.matcher.scorer import score_video
-from app.core.matcher.preprocessor import normalize_text, extract_episode_number
+from app.core.matcher.preprocessor import extract_episode_number
 from app.db import database as db
 
 logger = logging.getLogger(__name__)
@@ -376,119 +374,6 @@ def sync_anime_sources(anime_id: int, mode: str = "incremental") -> dict:
     Returns:
         同步结果
     """
-    anime = db.get_anime(anime_id)
-    if not anime:
-        return {"success": False, "error": "动漫不存在"}
+    from app.core.sync_service import run_anime_sync
 
-    if mode not in {"incremental", "full"}:
-        mode = "incremental"
-
-    # TMDB 添加的动漫：先从 TMDB 更新集数
-    tmdb_id = anime.get("tmdb_id")
-    if tmdb_id:
-        try:
-            detail = get_tmdb_client().get_anime_detail(tmdb_id)
-            if detail and detail.get("seasons"):
-                episodes = get_tmdb_client().get_all_episodes(tmdb_id, detail["seasons"])
-                if episodes:
-                    existing_episodes = db.get_episodes(anime_id)
-                    existing_nums = {ep["absolute_num"] for ep in existing_episodes}
-                    new_episodes = []
-                    for ep in episodes:
-                        if ep.get("absolute_num", 0) not in existing_nums:
-                            new_episodes.append(ep)
-                    if new_episodes:
-                        db.add_episodes(anime_id, new_episodes)
-                        logger.info(f"TMDB 更新: 新增 {len(new_episodes)} 个集数记录")
-                    db.update_anime(anime_id, {"total_episodes": detail.get("total_episodes", 0)})
-        except Exception as e:
-            logger.warning(f"TMDB 集数更新失败: {e}")
-
-    # 探测最新集数（补充 TMDB 未收录的集数）
-    discovered_ep = 0
-    try:
-        discovered_ep = discover_latest_episode(anime_id)
-        if discovered_ep > 0:
-            logger.info(f"探测到最新集数: {discovered_ep} 集")
-    except Exception as e:
-        logger.warning(f"探测最新集数失败: {e}")
-
-    episodes = db.get_episodes(anime_id)
-    sync_items = []
-    skipped = 0
-    skip_reasons = {"cached": 0}
-    for ep in episodes:
-        should_sync, reason = should_sync_episode(ep, mode)
-        if should_sync:
-            sync_items.append((ep, reason))
-        else:
-            skipped += 1
-            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
-
-    synced = 0
-    total_sources = 0
-    lock = threading.Lock()
-
-    logger.info(
-        f"同步并发配置: 模式={mode}, 集数并发={config.EPISODE_SYNC_WORKERS}, "
-        f"关键词并发={config.SOURCE_SEARCH_WORKERS}, 待同步={len(sync_items)}, 跳过={skipped}"
-    )
-
-    def _sync_one(ep, reason):
-        """同步单集（线程任务）"""
-        try:
-            sources = find_sources_for_episode(anime_id, ep["absolute_num"], force=(mode == "full"))
-            return (ep["absolute_num"], sources, reason)
-        except Exception as e:
-            logger.error(f"同步失败: {anime['title_cn']} 第{ep['absolute_num']}集 - {e}")
-            return (ep["absolute_num"], None, reason)
-
-    # 多线程并发同步，线程数由配置控制，避免叠加单集关键词并发后压垮实例
-    max_workers = min(max(1, config.EPISODE_SYNC_WORKERS), len(sync_items)) if sync_items else 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_sync_one, ep, reason): ep for ep, reason in sync_items}
-        for future in as_completed(futures):
-            ep_num, sources, reason = future.result()
-            if sources:
-                with lock:
-                    synced += 1
-                    total_sources += len(sources)
-
-    # 更新最后同步时间
-    db.touch_anime_sync(anime_id)
-
-    # 手动动漫无封面时，尝试用视频缩略图作为封面
-    anime = db.get_anime(anime_id)  # 重新读取
-    is_manual = anime.get("tmdb_id") is None
-    if is_manual and not anime.get("poster_url"):
-        # 从已保存的视频源中取最高分的缩略图
-        for ep in episodes:
-            sources = db.get_sources_for_episode(ep.get("id", 0))
-            if sources:
-                best_vid = sources[0].get("video_id", "")
-                if best_vid:
-                    thumb_url = f"https://img.youtube.com/vi/{best_vid}/hqdefault.jpg"
-                    db.update_anime(anime_id, {"poster_url": thumb_url})
-                    logger.info(f"自动设置封面(视频缩略图): {thumb_url}")
-                    break
-
-    # 记录同步日志
-    db.add_sync_log(
-        anime_id=anime_id,
-        sync_type="manual",
-        episodes_synced=synced,
-        sources_found=total_sources,
-        status="success",
-        message=f"同步完成: 模式={mode}, 同步 {synced}/{len(sync_items)} 集，跳过 {skipped}/{len(episodes)} 集"
-    )
-
-    return {
-        "success": True,
-        "mode": mode,
-        "synced_episodes": synced,
-        "skipped_episodes": skipped,
-        "total_episodes": len(episodes),
-        "target_episodes": len(sync_items),
-        "total_sources": total_sources,
-        "skip_reasons": skip_reasons,
-    }
+    return run_anime_sync(anime_id, mode=mode, sync_type="manual")

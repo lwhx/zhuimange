@@ -5,10 +5,10 @@
         {{ anime.title_cn }} · 第{{ episode.absolute_num }}集 · 共 {{ sources|length }} 个视频源
     </span>
     <div class="source-modal-toolbar__actions">
-        <button type="button" class="btn btn--secondary btn--sm" onclick="checkSourcesHealth({{ anime.id }}, {{ episode.absolute_num }})">
+        <button type="button" class="btn btn--secondary btn--sm" data-loading-text="检测中..." onclick="checkSourcesHealth({{ anime.id }}, {{ episode.absolute_num }})">
             🔎 检测可用性
         </button>
-        <button type="button" class="btn btn--secondary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
+        <button type="button" class="btn btn--secondary btn--sm" data-loading-text="搜索中..." onclick="findSources({{ anime.id }}, {{ episode.absolute_num }}, true)">
             🔄 重新搜索
         </button>
     </div>
@@ -65,10 +65,11 @@
 {% endfor %}
 
 {% else %}
-<div style="text-align:center;padding:40px;">
-    <div style="font-size:2.5rem;margin-bottom:12px;opacity:0.5;">🔍</div>
-    <div style="color:var(--text-secondary);margin-bottom:16px;">暂无视频源</div>
-    <button type="button" class="btn btn--primary btn--sm" onclick="findSources({{ anime.id }}, {{ episode.absolute_num }})">
+<div class="source-empty-state">
+    <div class="source-empty-state__icon">🔍</div>
+    <div class="source-empty-state__title">这一集还没有可用视频源</div>
+    <div class="source-empty-state__desc">可以立即搜索，或先同步整部动漫来补齐更多集数。</div>
+    <button type="button" class="btn btn--primary btn--sm" data-loading-text="搜索中..." onclick="findSources({{ anime.id }}, {{ episode.absolute_num }})">
         🔍 搜索视频源
     </button>
 </div>

@@ -19,8 +19,29 @@
         {% endif %}
     </div>
 
-    <div class="anime-detail__info">
-        <h1 class="anime-detail__title">{{ anime.title_cn }}</h1>
+    {% set next_episode = namespace(num=None) %}
+    {% for ep in anime.episodes|sort(attribute='absolute_num') %}
+        {% if next_episode.num is none and not ep.watched %}
+            {% set next_episode.num = ep.absolute_num %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="anime-detail__info" data-anime-id="{{ anime.id }}">
+        <div class="anime-detail__headline">
+            <div>
+                <div class="anime-detail__eyebrow">追更工作台</div>
+                <h1 class="anime-detail__title">{{ anime.title_cn }}</h1>
+            </div>
+            <button type="button"
+                class="btn btn--primary continue-watch-btn"
+                id="continue-watch-btn"
+                data-next-ep="{{ next_episode.num or '' }}"
+                onclick="continueWatching({{ anime.id }})"
+                aria-label="{% if next_episode.num %}继续观看第{{ next_episode.num }}集{% else %}已追完所有集数{% endif %}"
+                {% if not next_episode.num %}disabled{% endif %}>
+                {% if next_episode.num %}▶ 继续看第{{ next_episode.num }}集{% else %}✓ 已追完{% endif %}
+            </button>
+        </div>
 
         {% if anime.title_en %}
         <div style="color:var(--text-muted);font-size:0.9rem;margin-top:-8px;">{{ anime.title_en }}</div>
@@ -75,17 +96,6 @@
         <div class="anime-detail__actions">
             <button type="button" class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{ anime.id }}, 'incremental')">⚡ 同步视频源</button>
             <button type="button" class="btn btn--secondary btn--sm" id="full-sync-btn" onclick="syncAnime({{ anime.id }}, 'full')">♻ 全量刷新</button>
-            <!-- 同步进度条 -->
-            <div id="sync-progress" style="display:none;flex:1;min-width:200px;">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <div class="anime-card__progress-bar" style="flex:1;height:6px;">
-                        <div id="sync-progress-fill" class="anime-card__progress-fill"
-                            style="width:0%;transition:width 0.3s;"></div>
-                    </div>
-                    <span id="sync-progress-text"
-                        style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">0/0</span>
-                </div>
-            </div>
             <button type="button" class="btn btn--secondary btn--sm"
                 onclick="document.getElementById('progress-section').classList.toggle('visible')">📊 更新进度</button>
             <button type="button" class="btn btn--secondary btn--sm"
@@ -93,6 +103,33 @@
             <button type="button" class="btn btn--secondary btn--sm"
                 onclick="document.getElementById('alias-section').classList.toggle('visible')">🏷️ 管理别名</button>
             <button type="button" class="btn btn--danger btn--sm" onclick="deleteAnime({{ anime.id }})">🗑️ 删除</button>
+        </div>
+
+        <!-- 同步进度卡片 -->
+        <div id="sync-progress" class="sync-status-card" aria-live="polite" aria-label="同步状态">
+            <div class="sync-status-card__topline">
+                <span id="sync-status-stage" class="sync-status-card__stage">准备同步</span>
+                <span id="sync-status-percent" class="sync-status-card__percent">0%</span>
+            </div>
+            <div class="sync-status-card__bar">
+                <div id="sync-progress-fill" class="sync-status-card__fill" style="width:0%;"></div>
+            </div>
+            <div id="sync-progress-text" class="sync-status-card__text">等待任务创建...</div>
+            <div class="sync-status-card__metrics">
+                <span id="sync-metric-target">目标 0 集</span>
+                <span id="sync-metric-skipped">跳过 0 集</span>
+                <span id="sync-metric-sources">视频源 0 个</span>
+            </div>
+            <div class="sync-status-card__actions" hidden>
+                <button type="button"
+                    class="btn btn--secondary btn--sm"
+                    id="sync-reconnect-btn"
+                    data-loading-text="接入中..."
+                    onclick="reconnectSyncTask()"
+                    hidden>
+                    🔌 重新接入同步
+                </button>
+            </div>
         </div>
 
         <!-- 快速更新进度 -->
@@ -155,18 +192,42 @@
             <span style="color:var(--text-muted);font-size:0.85rem;">
                 {{ anime.unwatched_count }} 集未看
             </span>
-            <button type="button" class="btn btn--secondary btn--sm" id="sort-toggle-btn" onclick="toggleEpisodeSort()" aria-label="切换集数排序" title="切换排序">
+            <button type="button" class="btn btn--secondary btn--sm" id="sort-toggle-btn" data-sort-order="{{ anime.sort_order }}" onclick="toggleEpisodeSort()" aria-label="切换集数排序" title="切换排序">
                 {% if anime.sort_order == 'desc' %}↓ 倒序{% else %}↑ 正序{% endif %}
             </button>
         </div>
     </div>
 
     {% if anime.episodes|length > 0 %}
+    <div class="episodes-toolbar" aria-label="集数筛选工具">
+        <div class="episodes-filter-tabs" role="group" aria-label="按观看状态或视频源筛选">
+            <button type="button" class="episode-filter-tab active" data-filter="all" onclick="setEpisodeFilter('all')" aria-pressed="true">全部</button>
+            <button type="button" class="episode-filter-tab" data-filter="unwatched" onclick="setEpisodeFilter('unwatched')" aria-pressed="false">未看</button>
+            <button type="button" class="episode-filter-tab" data-filter="watched" onclick="setEpisodeFilter('watched')" aria-pressed="false">已看</button>
+            <button type="button" class="episode-filter-tab" data-filter="with_sources" onclick="setEpisodeFilter('with_sources')" aria-pressed="false">有源</button>
+            <button type="button" class="episode-filter-tab" data-filter="without_sources" onclick="setEpisodeFilter('without_sources')" aria-pressed="false">无源</button>
+        </div>
+        <label class="episode-search" for="episode-search-input">
+            <span class="episode-search__icon">🔎</span>
+            <span class="visually-hidden">搜索集数</span>
+            <input type="search" id="episode-search-input" placeholder="搜索集数或标题" oninput="setEpisodeSearch(this.value)" autocomplete="off">
+        </label>
+    </div>
+    <div id="episode-filter-empty" class="episodes-filter-empty" hidden>
+        没有符合条件的集数，换个筛选试试。
+    </div>
+    {% endif %}
+
+    {% if anime.episodes|length > 0 %}
     <div class="episodes-grid">
         {% for ep in anime.episodes %}
-        <div class="episode-item {% if ep.watched %}episode-item--watched{% endif %}" data-ep="{{ ep.absolute_num }}">
+        <div class="episode-item {% if ep.watched %}episode-item--watched{% endif %}"
+            data-ep="{{ ep.absolute_num }}"
+            data-title="{% if ep.title %}{{ ep.title }}{% else %}第{{ ep.absolute_num }}集{% endif %}"
+            data-watched="{{ 1 if ep.watched else 0 }}"
+            data-sources="{{ ep.source_count or 0 }}">
             <div class="episode-item__num">
-                {{ ep.absolute_num }}
+                {% if ep.watched %}✓{% else %}{{ ep.absolute_num }}{% endif %}
             </div>
             <div class="episode-item__info">
                 <div class="episode-item__title">

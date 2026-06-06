@@ -69,12 +69,18 @@ def ngram_similarity(s1: str, s2: str, n: int = 2) -> float:
 
 def exact_match(s1: str, s2: str) -> bool:
     """精确匹配（忽略空格和大小写）"""
-    return s1.strip().lower() == s2.strip().lower()
+    left = s1.strip().lower()
+    right = s2.strip().lower()
+    return bool(left and right) and left == right
 
 
 def contains_match(title: str, query: str) -> bool:
     """包含匹配"""
-    return query.lower() in title.lower() or title.lower() in query.lower()
+    title_lower = title.strip().lower()
+    query_lower = query.strip().lower()
+    if not title_lower or not query_lower:
+        return False
+    return query_lower in title_lower or title_lower in query_lower
 
 
 def subsequence_match_ratio(title: str, query: str) -> float:
@@ -125,6 +131,9 @@ def fuzzy_match_score(source_title: str, target_title: str,
     Returns:
         匹配分数 (0.0 - 100.0)
     """
+    if not source_title or not target_title:
+        return 0.0
+
     all_titles = [target_title]
     if aliases:
         all_titles.extend([a.lower().strip() for a in aliases])

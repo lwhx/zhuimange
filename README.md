@@ -223,6 +223,8 @@ zhuimange/
 | `LOG_LEVEL` | `INFO` | 日志级别（DEBUG / INFO / WARNING / ERROR） |
 | `SECRET_KEY` | admin | Flask 密钥 |
 | `PORT` | `8000` | 服务端口 |
+| `SYNC_TASK_RETENTION_SECONDS` | `3600` | 已完成同步任务在内存中的保留秒数 |
+| `DISCOVER_TMDB_LATEST_EPISODES` | `false` | 是否为 TMDB 动漫额外使用视频搜索探测最新集数 |
 
 ---
 
@@ -256,6 +258,8 @@ docker compose logs -f zhuimange
 # 使用 sqlite3 备份
 sqlite3 data/tracker.db ".backup data/backup-$(date +%Y%m%d).db"
 ```
+
+升级到包含唯一约束迁移的版本时，系统会在清理重复集数、视频源或别名前自动生成 `*.pre-005-*.db` SQLite 备份。
 
 ### 版本升级
 

@@ -70,7 +70,8 @@ def create_app(test_config: dict = None) -> Flask:
     with app.app_context():
         init_db()
         _init_default_password()
-        _test_invidious_connection()
+        if not app.config.get('TESTING') and not app.config.get('SKIP_EXTERNAL_CHECKS', False):
+            _test_invidious_connection()
 
     from app.api.routes import api
     app.register_blueprint(api)
@@ -83,11 +84,14 @@ def create_app(test_config: dict = None) -> Flask:
     _register_routes(app)
     _register_health_endpoints(app)
 
-    try:
-        from app.core.scheduler import start_scheduler
-        start_scheduler()
-    except Exception as e:
-        logger.error(f"调度器启动失败: {e}")
+    if not app.config.get('TESTING') and not app.config.get('DISABLE_SCHEDULER', False):
+        try:
+            from app.core.sync_queue import sync_queue
+            from app.core.scheduler import start_scheduler
+            sync_queue.start()
+            start_scheduler()
+        except Exception as e:
+            logger.error(f"调度器启动失败: {e}")
 
     return app
 
@@ -248,7 +252,13 @@ def _register_routes(app: Flask):
         return render_template('index.html', animes=animes)
 
     @app.route('/anime/<int:anime_id>')
-    @cache.cached(timeout=120, key_prefix=lambda: f'anime_detail_{request.view_args.get("anime_id", "")}')
+    @cache.cached(
+        timeout=120,
+        key_prefix=lambda: (
+            f'anime_detail_{request.view_args.get("anime_id", "")}_'
+            f'{get_setting("episode_sort_order", "desc")}'
+        ),
+    )
     def anime_detail(anime_id):
         anime = get_anime(anime_id)
         if not anime:
