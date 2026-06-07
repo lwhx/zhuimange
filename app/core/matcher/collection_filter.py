@@ -33,6 +33,11 @@ MUSIC_KEYWORDS = [
     '主题曲', '插曲', 'AMV', 'MAD', '同人',
 ]
 
+AUDIO_STORY_KEYWORDS = [
+    '有声小说', '听书', '说书', '小说朗读', '原著朗读',
+    '广播剧', '书场', '评书',
+]
+
 # 合集标题模式
 COLLECTION_RANGE_PATTERN = re.compile(
     r'(\d+)\s*[-~～到至]\s*(\d+)\s*[集话話期回]'
@@ -117,6 +122,7 @@ def is_non_episode_content(title: str) -> bool:
         ("解说", COMMENTARY_KEYWORDS),
         ("预告", PREVIEW_KEYWORDS),
         ("音乐", MUSIC_KEYWORDS),
+        ("有声小说", AUDIO_STORY_KEYWORDS),
     ]
 
     for category, keywords in all_keyword_groups:

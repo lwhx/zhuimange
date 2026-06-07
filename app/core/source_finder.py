@@ -9,7 +9,7 @@ from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app import config
 from app.core.invidious_client import get_invidious_client
-from app.core.matcher.scorer import score_video
+from app.core.matcher.scorer import score_video, source_sort_key
 from app.core.matcher.preprocessor import extract_episode_number
 from app.db import database as db
 
@@ -217,7 +217,7 @@ def find_sources_for_episode(
     if is_manual:
         logger.info(f"手动添加动漫，使用宽松阈值: {threshold}")
 
-    # 评分并排序
+    # 评分并排序：先硬过滤，再按置信等级和同级质量排序
     scored_videos = []
     filtered_count = 0
     below_threshold_count = 0
@@ -247,8 +247,8 @@ def find_sources_for_episode(
         f"{below_threshold_count} 低于阈值({threshold})"
     )
 
-    # 按分数排序
-    scored_videos.sort(key=lambda x: x["match_score"], reverse=True)
+    # 置信等级优先；发布时间/播放量/画质只作为同级内排序因素
+    scored_videos.sort(key=source_sort_key, reverse=True)
 
     # 强制重新搜索时，搜索流程已完成，此时用新结果替换该集旧视频源
     if force:
