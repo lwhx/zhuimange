@@ -27,11 +27,11 @@ def check_invidious_health(video_id: str = DEFAULT_VIDEO_ID) -> dict[str, Any]:
     client = get_invidious_client()
     client.refresh_instances()
     instance_items = _build_instance_items(client)
-    session = requests.Session()
-    instance_results = [_check_instance(session, item) for item in instance_items]
-    available_instances = [item for item in instance_results if item["available"]]
-    active_url = _resolve_active_url(client.primary_url, available_instances)
-    video_probes = [_check_video_detail(session, item["url"], video_id, item) for item in instance_results if item["available"]]
+    with requests.Session() as session:
+        instance_results = [_check_instance(session, item) for item in instance_items]
+        available_instances = [item for item in instance_results if item["available"]]
+        active_url = _resolve_active_url(client.primary_url, available_instances)
+        video_probes = [_check_video_detail(session, item["url"], video_id, item) for item in instance_results if item["available"]]
     video_probe = _resolve_primary_video_probe(active_url, video_probes) if video_probes else _empty_video_probe(video_id)
     overall_status = _resolve_overall_status(available_instances, video_probe)
 

@@ -72,18 +72,14 @@ def _get_quality_bonus(video_title: str) -> float:
     return quality_bonus
 
 
-def _get_channel_score(video: dict, trusted_channel: bool) -> float:
-    if trusted_channel:
-        return 100.0
+def _get_channel_score(trusted_channel: bool) -> float:
+    """频道维度评分：仅反映频道信誉（是否为信任频道）。
 
-    view_count = _to_int(video.get("view_count"))
-    if view_count > 100000:
-        return 60.0
-    if view_count > 10000:
-        return 40.0
-    if view_count > 1000:
-        return 20.0
-    return 0.0
+    历史实现同时按 view_count 给分，与 _get_view_score 语义重叠导致播放量被
+    重复计权；此处剥离播放量，让 channel_score 专司“频道可信度”，view_count
+    统一交给 _get_view_score 处理。
+    """
+    return 100.0 if trusted_channel else 0.0
 
 
 def _get_view_score(video: dict) -> float:
@@ -258,7 +254,7 @@ def score_video(
 
     channel_id = video.get("channel_id", "")
     trusted_channel = bool(channel_id and db.is_trusted_channel(channel_id))
-    channel_score = _get_channel_score(video, trusted_channel)
+    channel_score = _get_channel_score(trusted_channel)
     recency_score = _get_recency_score(video)
     view_score = _get_view_score(video)
     quality_bonus = _get_quality_bonus(video_title)
