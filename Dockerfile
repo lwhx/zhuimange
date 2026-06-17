@@ -33,10 +33,10 @@ COPY app/ ./app/
 COPY requirements.txt .
 
 # 创建非 root 用户和必要的目录
-# 固定 UID/GID=1000，便于宿主机用 chown -R 1000:1000 ./data 对齐卷权限，
-# 从而在 docker-compose 中无需以 root 运行即可写入挂载的数据卷。
-RUN groupadd -r -g 1000 appuser && \
-    useradd -r -u 1000 -g appuser -s /sbin/nologin -c "Application user" appuser && \
+# （当前 docker-compose 以 root 运行；若改回非 root，建议固定 UID=1000 并在宿主执行
+#   chown -R 1000:1000 ./data 对齐卷权限）
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -s /sbin/nologin -c "Application user" appuser && \
     mkdir -p /app/data && \
     chown -R appuser:appuser /app
 

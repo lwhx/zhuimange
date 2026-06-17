@@ -2,14 +2,16 @@ services:
   zhuimange:
     image: ghcr.io/lwhx/zhuimange:latest
     container_name: zhuimange
+    # 个人内网部署（仅 127.0.0.1:8280 暴露）为简化挂载卷权限管理，容器以 root 运行。
+    # 公网暴露或多租户场景建议改回非 root（取消 user，配合 chown -R 1000:1000 ./data）。
+    user: "0:0"
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:8280:8000"
     volumes:
-      # 宿主机需保证该目录可被 UID 1000 写入：
-      #   chown -R 1000:1000 ./data
+      # 容器以 root 运行，可直接读写挂载卷，无需 chown
       - ./data:/app/data:rw
     env_file:
       - .env
