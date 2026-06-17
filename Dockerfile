@@ -33,8 +33,10 @@ COPY app/ ./app/
 COPY requirements.txt .
 
 # 创建非 root 用户和必要的目录
-RUN groupadd -r appuser && \
-    useradd -r -g appuser -s /sbin/nologin -c "Application user" appuser && \
+# 固定 UID/GID=1000，便于宿主机用 chown -R 1000:1000 ./data 对齐卷权限，
+# 从而在 docker-compose 中无需以 root 运行即可写入挂载的数据卷。
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -s /sbin/nologin -c "Application user" appuser && \
     mkdir -p /app/data && \
     chown -R appuser:appuser /app
 
@@ -52,8 +54,7 @@ EXPOSE 8000
 
 VOLUME ["/app/data"]
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/api/health || exit 1
+# 健康检查交由 docker-compose.yml 统一配置，避免与 compose 的 healthcheck 重复
 
 CMD ["gunicorn", "--worker-class", "gthread", \
      "-w", "1", "--threads", "4", \
