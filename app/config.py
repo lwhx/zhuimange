@@ -16,17 +16,41 @@ DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 TZ = os.getenv("TZ", "Asia/Shanghai")
 METRICS_TOKEN = os.getenv("METRICS_TOKEN", "")
 
-# SECRET_KEY: 优先从环境变量获取；未设置时生成随机密钥并警告
-_SECRET_KEY_FROM_ENV = os.getenv("SECRET_KEY")
-if _SECRET_KEY_FROM_ENV:
+# SECRET_KEY: 优先从环境变量获取；未设置时持久化到 data 目录复用，
+# 避免每次重启都换新 key 导致所有用户会话失效。
+_SECRET_KEY_FROM_ENV = os.getenv("SECRET_KEY", "").strip()
+_PLACEHOLDER_VALUES = {"", "your-secret-key-change-this", "change-me"}
+
+if _SECRET_KEY_FROM_ENV and _SECRET_KEY_FROM_ENV.lower() not in _PLACEHOLDER_VALUES:
     SECRET_KEY = _SECRET_KEY_FROM_ENV
 else:
-    SECRET_KEY = secrets.token_hex(32)
     _logger = logging.getLogger(__name__)
-    _logger.warning(
-        "SECRET_KEY 未设置环境变量，已自动生成随机密钥。"
-        "生产环境请设置 SECRET_KEY 环境变量以确保会话持久性！"
-    )
+    _secret_file = os.path.join(BASE_DIR, "data", ".secret_key")
+    _loaded_persisted = None
+    try:
+        if os.path.isfile(_secret_file):
+            with open(_secret_file, "r", encoding="utf-8") as f:
+                _loaded_persisted = f.read().strip()
+    except OSError:
+        pass
+
+    if _loaded_persisted:
+        SECRET_KEY = _loaded_persisted
+    else:
+        SECRET_KEY = secrets.token_hex(32)
+        try:
+            os.makedirs(os.path.dirname(_secret_file), exist_ok=True)
+            # 仅属主可读写，防止其他用户读取会话密钥
+            fd = os.open(_secret_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(SECRET_KEY)
+            _logger.warning(
+                "SECRET_KEY 未配置，已自动生成并持久化到 %s。"
+                "生产环境建议显式设置 SECRET_KEY 环境变量。",
+                _secret_file,
+            )
+        except OSError as e:
+            _logger.warning("无法持久化 SECRET_KEY，本次启动将使用临时密钥（重启后会话失效）: %s", e)
 
 # ==================== TMDB 配置 ====================
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
@@ -64,7 +88,7 @@ SCORE_WEIGHT_CHANNEL = 0.15
 SCORE_WEIGHT_RECENCY = 0.15
 
 # ==================== 视频源保存上限 ====================
-MAX_SOURCES_PER_EPISODE = 10
+MAX_SOURCES_PER_EPISODE = int(os.getenv("MAX_SOURCES_PER_EPISODE", "10"))
 
 # ==================== 国漫别名库 ====================
 DONGHUA_ALIASES: dict[str, list[str]] = {

@@ -33,6 +33,20 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 
+# 可选：设置 LOG_FILE 环境变量后，日志额外写入轮转文件（非容器部署兜底）。
+# 容器部署依赖 docker logs，可不设。
+_log_file = os.getenv("LOG_FILE", "")
+if _log_file:
+    from logging.handlers import RotatingFileHandler
+    _file_handler = RotatingFileHandler(
+        _log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8",
+    )
+    _file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s [%(levelname)s] %(name)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S',
+    ))
+    _file_handler.setLevel(getattr(logging, config.LOG_LEVEL, logging.INFO))
+    logging.getLogger().addHandler(_file_handler)
+
 logger = logging.getLogger(__name__)
 
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP Requests', ['method', 'endpoint', 'status'])
@@ -107,7 +121,11 @@ def create_app(test_config: dict = None) -> Flask:
 
 
 def _init_default_password():
-    """初始化默认密码（首次启动时生成随机密码）"""
+    """初始化默认密码（首次启动时生成随机密码）
+
+    密码同时打印到日志并写入 data/.initial_password（仅属主可读），
+    作为日志丢失时的兜底取回途径。用户首次登录后自动删除该文件。
+    """
     stored_hash = get_setting('auth_password', '')
     if not stored_hash:
         default_password = secrets.token_urlsafe(12)
@@ -117,8 +135,29 @@ def _init_default_password():
             f"⚠️  已生成随机初始密码: {default_password}\n"
             f"    请立即登录并在设置中修改密码！此密码仅显示一次。"
         )
+        # 兜底留存：日志可能被轮转/丢失，写入文件便于取回
+        try:
+            secret_file = os.path.join(config.BASE_DIR, "data", ".initial_password")
+            os.makedirs(os.path.dirname(secret_file), exist_ok=True)
+            fd = os.open(secret_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(default_password)
+            logger.warning(f"    初始密码已留存到 {secret_file}，登录后将自动删除")
+        except OSError as e:
+            logger.warning(f"无法留存初始密码文件: {e}")
     elif not is_bcrypt_hash(stored_hash):
         logger.info("检测到旧版密码哈希格式，将在下次登录时自动升级")
+
+
+def _consume_initial_password_file():
+    """首次登录成功后删除初始密码留存文件，避免明文泄露。"""
+    try:
+        secret_file = os.path.join(config.BASE_DIR, "data", ".initial_password")
+        if os.path.isfile(secret_file):
+            os.remove(secret_file)
+            logger.info("初始密码留存文件已删除")
+    except OSError as e:
+        logger.warning(f"删除初始密码留存文件失败: {e}")
 
 
 def _test_invidious_connection():
@@ -241,6 +280,7 @@ def _register_routes(app: Flask):
                     set_setting('auth_password', new_hash)
                     logger.info("密码哈希已升级为 bcrypt")
 
+                _consume_initial_password_file()
                 session.permanent = True
                 session['authenticated'] = True
                 session['login_time'] = datetime.now().isoformat()
