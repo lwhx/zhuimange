@@ -82,15 +82,13 @@
         {% endif %}
 
         <!-- 别名 -->
-        {% if anime.aliases %}
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <div id="alias-list" style="display:flex;flex-wrap:wrap;gap:6px;">
             {% for alias in anime.aliases %}
             <span
                 style="padding:3px 10px;background:var(--bg-input);border-radius:var(--radius-xl);font-size:0.78rem;color:var(--text-muted);">{{
                 alias }}</span>
             {% endfor %}
         </div>
-        {% endif %}
 
         <!-- 操作按钮 -->
         <div class="anime-detail__actions">
@@ -140,7 +138,7 @@
                     max="{{ anime.episodes|length }}"
                     style="width:80px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
                 <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">集</label>
-                <button type="button" class="btn btn--primary btn--sm" onclick="updateProgress({{ anime.id }})">更新</button>
+                <button type="button" class="btn btn--primary btn--sm" onclick="updateProgress({{ anime.id }}, this)">更新</button>
             </div>
         </div>
 
@@ -169,7 +167,7 @@
                 <input type="text" id="rule-deny-channels"
                        value="{{ (anime.rules.deny_channels if anime.rules else '')|replace('[', '')|replace(']', '')|replace('\"', '') }}">
             </div>
-            <button type="button" class="btn btn--primary btn--sm" onclick="saveRules({{ anime.id }})">保存规则</button>
+            <button type="button" class="btn btn--primary btn--sm" onclick="saveRules({{ anime.id }}, this)">保存规则</button>
         </div>
 
         <!-- 别名管理 -->
@@ -177,7 +175,7 @@
             <div style="display:flex;gap:8px;align-items:center;">
                 <input type="text" id="alias-input" placeholder="输入新别名"
                     style="flex:1;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
-                <button type="button" class="btn btn--primary btn--sm" onclick="addAlias({{ anime.id }})">添加</button>
+                <button type="button" class="btn btn--primary btn--sm" onclick="addAlias({{ anime.id }}, this)">添加</button>
             </div>
         </div>
     </div>
@@ -246,12 +244,12 @@
                     🎬
                 </button>
                 <button type="button" class="btn btn--sm btn--success"
-                    onclick="markWatched({{ anime.id }}, {{ ep.absolute_num }})"
+                    onclick="markWatched({{ anime.id }}, {{ ep.absolute_num }}, this)"
                     aria-label="标记第{{ ep.absolute_num }}集已看" title="标记已看"{% if ep.watched %} style="display: none;"{% endif %}>
                     ✓
                 </button>
                 <button type="button" class="btn btn--sm btn--secondary"
-                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }})"
+                    onclick="markUnwatched({{ anime.id }}, {{ ep.absolute_num }}, this)"
                     aria-label="取消第{{ ep.absolute_num }}集已看" title="标记未看"{% if not ep.watched %} style="display: none;"{% endif %}>
                     ↩️
                 </button>

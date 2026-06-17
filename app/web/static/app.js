@@ -397,8 +397,8 @@ function createEpisodeItem(animeId, episode) {
         </div>
         <div class="episode-item__actions">
             <button type="button" class="btn btn--sm btn--secondary" onclick="openSourcesModal(${animeId}, ${epNum})" aria-label="查看第${epNum}集视频源" title="查看视频源">🎬</button>
-            <button type="button" class="btn btn--sm btn--success" onclick="markWatched(${animeId}, ${epNum})" aria-label="标记第${epNum}集已看" title="标记已看"${watched ? ' style="display:none;"' : ''}>✓</button>
-            <button type="button" class="btn btn--sm btn--secondary" onclick="markUnwatched(${animeId}, ${epNum})" aria-label="取消第${epNum}集已看" title="标记未看"${watched ? '' : ' style="display:none;"'}>↩️</button>
+            <button type="button" class="btn btn--sm btn--success" onclick="markWatched(${animeId}, ${epNum}, this)" aria-label="标记第${epNum}集已看" title="标记已看"${watched ? ' style="display:none;"' : ''}>✓</button>
+            <button type="button" class="btn btn--sm btn--secondary" onclick="markUnwatched(${animeId}, ${epNum}, this)" aria-label="取消第${epNum}集已看" title="标记未看"${watched ? '' : ' style="display:none;"'}>↩️</button>
         </div>
     `;
     return item;
@@ -436,6 +436,23 @@ function setButtonLoading(btn, loading = true, fallbackText = '处理中...') {
     }
 }
 
+/**
+ * 包装一个异步动作：禁用按钮 + 显示 loading 文案，执行完恢复。
+ * 防止用户连点触发重复请求（如添加动漫、标记已看）。
+ * @param {HTMLButtonElement} btn 触发按钮（onclick 传 this）
+ * @param {Function} fn 异步动作
+ * @param {string} loadingText loading 期间显示的文字
+ */
+async function withButtonLock(btn, fn, loadingText = '处理中...') {
+    if (btn && btn.disabled) return;          // 已在处理中，忽略
+    setButtonLoading(btn, true, loadingText);
+    try {
+        return await fn();
+    } finally {
+        setButtonLoading(btn, false);
+    }
+}
+
 function initEpisodeWorkbench() {
     document.querySelectorAll('.episode-filter-tab').forEach(btn => {
         btn.setAttribute('aria-pressed', btn.classList.contains('active') ? 'true' : 'false');
@@ -467,6 +484,18 @@ function initSearch() {
 
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => searchAnime(query), 400);
+    });
+
+    // 回车立即搜索（跳过防抖），符合直觉
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const query = input.value.trim();
+            if (query.length >= 2) {
+                e.preventDefault();
+                clearTimeout(searchTimer);
+                searchAnime(query);
+            }
+        }
     });
 
     clearBtn.addEventListener('click', () => {
@@ -513,7 +542,7 @@ async function searchAnime(query) {
                     </div>
                 </div>
                 <button type="button" class="search-result-item__add-btn"
-                        onclick="event.stopPropagation(); addAnime(${id})">
+                        onclick="event.stopPropagation(); addAnime(${id}, this)">
                     + 添加
                 </button>
             </div>`;
@@ -523,25 +552,27 @@ async function searchAnime(query) {
     }
 }
 
-async function addAnime(tmdbId) {
-    try {
-        const data = await apiRequest('/api/anime/add', {
-            method: 'POST',
-            body: JSON.stringify({ tmdb_id: tmdbId }),
-        });
-        ToastManager.success('添加成功！');
+async function addAnime(tmdbId, btn) {
+    return withButtonLock(btn, async () => {
+        try {
+            const data = await apiRequest('/api/anime/add', {
+                method: 'POST',
+                body: JSON.stringify({ tmdb_id: tmdbId }),
+            });
+            ToastManager.success('添加成功！');
 
-        const animeId = data.data.anime_id;
-        const animeData = await apiRequest(`/api/anime/${animeId}`);
-        const anime = animeData.data;
+            const animeId = data.data.anime_id;
+            const animeData = await apiRequest(`/api/anime/${animeId}`);
+            const anime = animeData.data;
 
-        createAnimeCard(anime);
+            createAnimeCard(anime);
 
-        document.getElementById('search-results').classList.remove('visible');
-        document.getElementById('search-input').value = '';
-    } catch (err) {
-        // error already shown by apiRequest
-    }
+            document.getElementById('search-results').classList.remove('visible');
+            document.getElementById('search-input').value = '';
+        } catch (err) {
+            // error already shown by apiRequest
+        }
+    }, '添加中...');
 }
 
 function createAnimeCard(anime) {
@@ -614,7 +645,7 @@ function toggleManualAdd() {
     form.classList.toggle('visible');
 }
 
-async function submitManualAdd() {
+async function submitManualAdd(btn) {
     const title = document.getElementById('manual-title').value.trim();
     const totalEp = parseInt(document.getElementById('manual-total-ep').value || '0', 10);
     const aliases = document.getElementById('manual-aliases').value
@@ -627,84 +658,90 @@ async function submitManualAdd() {
         return;
     }
 
-    try {
-        const data = await apiRequest('/api/anime/add_manual', {
-            method: 'POST',
-            body: JSON.stringify({
-                title,
-                total_episodes: totalEp,
-                aliases,
-            }),
-        });
-        ToastManager.success('添加成功！');
+    return withButtonLock(btn, async () => {
+        try {
+            const data = await apiRequest('/api/anime/add_manual', {
+                method: 'POST',
+                body: JSON.stringify({
+                    title,
+                    total_episodes: totalEp,
+                    aliases,
+                }),
+            });
+            ToastManager.success('添加成功！');
 
-        const animeId = data.data.anime_id;
-        const animeData = await apiRequest(`/api/anime/${animeId}`);
-        const anime = animeData.data;
+            const animeId = data.data.anime_id;
+            const animeData = await apiRequest(`/api/anime/${animeId}`);
+            const anime = animeData.data;
 
-        createAnimeCard(anime);
+            createAnimeCard(anime);
 
-        document.getElementById('manual-title').value = '';
-        document.getElementById('manual-total-ep').value = '';
-        document.getElementById('manual-aliases').value = '';
-        toggleManualAdd();
-    } catch (err) { /* handled */ }
+            document.getElementById('manual-title').value = '';
+            document.getElementById('manual-total-ep').value = '';
+            document.getElementById('manual-aliases').value = '';
+            toggleManualAdd();
+        } catch (err) { /* handled */ }
+    }, '添加中...');
 }
 
 // ==================== 进度管理 ====================
 
-async function markWatched(animeId, epNum) {
-    try {
-        await apiRequest(`/api/anime/${animeId}/episode/${epNum}/watch`, {
-            method: 'POST',
-        });
-        ToastManager.success(`第${epNum}集已标记为看过`);
-        // 更新 UI
-        const item = document.querySelector(`[data-ep="${epNum}"]`);
-        if (item) {
-            item.classList.add('episode-item--watched');
-            item.dataset.watched = '1';
-            const numEl = item.querySelector('.episode-item__num');
-            if (numEl) numEl.innerHTML = '✓';
-            // 切换按钮显示
-            const btns = item.querySelectorAll('.episode-item__actions .btn');
-            btns.forEach(btn => {
-                if (btn.textContent.trim() === '✓') btn.style.display = 'none';
-                if (btn.textContent.trim() === '↩️') btn.style.display = '';
+async function markWatched(animeId, epNum, btn) {
+    return withButtonLock(btn, async () => {
+        try {
+            await apiRequest(`/api/anime/${animeId}/episode/${epNum}/watch`, {
+                method: 'POST',
             });
-        }
-        updateProgressBar(animeId);
-        updateContinueWatchButton();
-        applyEpisodeFilters();
-    } catch (err) { /* handled */ }
+            ToastManager.success(`第${epNum}集已标记为看过`);
+            // 更新 UI
+            const item = document.querySelector(`[data-ep="${epNum}"]`);
+            if (item) {
+                item.classList.add('episode-item--watched');
+                item.dataset.watched = '1';
+                const numEl = item.querySelector('.episode-item__num');
+                if (numEl) numEl.innerHTML = '✓';
+                // 切换按钮显示
+                const btns = item.querySelectorAll('.episode-item__actions .btn');
+                btns.forEach(btn => {
+                    if (btn.textContent.trim() === '✓') btn.style.display = 'none';
+                    if (btn.textContent.trim() === '↩️') btn.style.display = '';
+                });
+            }
+            updateProgressBar(animeId);
+            updateContinueWatchButton();
+            applyEpisodeFilters();
+        } catch (err) { /* handled */ }
+    }, '✓');
 }
 
-async function markUnwatched(animeId, epNum) {
-    try {
-        await apiRequest(`/api/anime/${animeId}/episode/${epNum}/unwatch`, {
-            method: 'POST',
-        });
-        ToastManager.success(`第${epNum}集已标记为未看`);
-        const item = document.querySelector(`[data-ep="${epNum}"]`);
-        if (item) {
-            item.classList.remove('episode-item--watched');
-            item.dataset.watched = '0';
-            const numEl = item.querySelector('.episode-item__num');
-            if (numEl) numEl.textContent = epNum;
-            // 切换按钮显示
-            const btns = item.querySelectorAll('.episode-item__actions .btn');
-            btns.forEach(btn => {
-                if (btn.textContent.trim() === '✓') btn.style.display = '';
-                if (btn.textContent.trim() === '↩️') btn.style.display = 'none';
+async function markUnwatched(animeId, epNum, btn) {
+    return withButtonLock(btn, async () => {
+        try {
+            await apiRequest(`/api/anime/${animeId}/episode/${epNum}/unwatch`, {
+                method: 'POST',
             });
-        }
-        updateProgressBar(animeId);
-        updateContinueWatchButton();
-        applyEpisodeFilters();
-    } catch (err) { /* handled */ }
+            ToastManager.success(`第${epNum}集已标记为未看`);
+            const item = document.querySelector(`[data-ep="${epNum}"]`);
+            if (item) {
+                item.classList.remove('episode-item--watched');
+                item.dataset.watched = '0';
+                const numEl = item.querySelector('.episode-item__num');
+                if (numEl) numEl.textContent = epNum;
+                // 切换按钮显示
+                const btns = item.querySelectorAll('.episode-item__actions .btn');
+                btns.forEach(btn => {
+                    if (btn.textContent.trim() === '✓') btn.style.display = '';
+                    if (btn.textContent.trim() === '↩️') btn.style.display = 'none';
+                });
+            }
+            updateProgressBar(animeId);
+            updateContinueWatchButton();
+            applyEpisodeFilters();
+        } catch (err) { /* handled */ }
+    }, '↩️');
 }
 
-async function updateProgress(animeId) {
+async function updateProgress(animeId, btn) {
     const input = document.getElementById('progress-input');
     if (!input) return;
     const ep = parseInt(input.value, 10);
@@ -713,14 +750,36 @@ async function updateProgress(animeId) {
         return;
     }
 
-    try {
-        await apiRequest(`/api/anime/${animeId}/progress`, {
-            method: 'PUT',
-            body: JSON.stringify({ watched_ep: ep }),
-        });
-        ToastManager.success(`进度已更新至第${ep}集`);
-        setTimeout(() => location.reload(), 800);
-    } catch (err) { /* handled */ }
+    return withButtonLock(btn, async () => {
+        try {
+            const resp = await apiRequest(`/api/anime/${animeId}/progress`, {
+                method: 'PUT',
+                body: JSON.stringify({ watched_ep: ep }),
+            });
+            const watchedCount = resp?.data?.watched_count ?? ep;
+            ToastManager.success(`进度已更新至第${ep}集`);
+
+            // 局部刷新各集 watched 状态，避免整页 reload 丢失滚动位置
+            document.querySelectorAll('.episode-item').forEach(item => {
+                const itemEp = Number(item.dataset.ep || 0);
+                const shouldWatch = itemEp > 0 && itemEp <= ep;
+                item.dataset.watched = shouldWatch ? '1' : '0';
+                item.classList.toggle('episode-item--watched', shouldWatch);
+                const numEl = item.querySelector('.episode-item__num');
+                if (numEl) numEl.innerHTML = shouldWatch ? '✓' : String(itemEp);
+                // 切换 标记/取消 按钮
+                item.querySelectorAll('.episode-item__actions .btn').forEach(b => {
+                    const t = b.textContent.trim();
+                    if (t === '✓') b.style.display = shouldWatch ? 'none' : '';
+                    if (t === '↩️') b.style.display = shouldWatch ? '' : 'none';
+                });
+            });
+
+            updateProgressBar(animeId);
+            updateContinueWatchButton();
+            applyEpisodeFilters();
+        } catch (err) { /* handled */ }
+    }, '更新中...');
 }
 
 function updateProgressBar(animeId) {
@@ -916,7 +975,15 @@ function openSyncTaskStream({ animeId, taskId, mode, reconnect = false }) {
             es.close();
             return;
         }
-        handleSyncStreamEvent(JSON.parse(event.data), sessionId);
+        // 容错：代理/网络异常可能注入非 JSON 数据，避免单条解析失败中断整个流
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            console.warn('SSE 消息解析失败，已跳过:', e);
+            return;
+        }
+        handleSyncStreamEvent(data, sessionId);
     };
 
     es.onerror = function () {
@@ -1378,7 +1445,7 @@ async function saveSettings() {
 
 // ==================== 搜索规则 ====================
 
-async function saveRules(animeId) {
+async function saveRules(animeId, btn) {
     const allow = document.getElementById('rule-allow-keywords');
     const deny = document.getElementById('rule-deny-keywords');
     const allowCh = document.getElementById('rule-allow-channels');
@@ -1391,18 +1458,20 @@ async function saveRules(animeId) {
         deny_channels: denyCh ? denyCh.value.split(',').map(s => s.trim()).filter(Boolean) : [],
     };
 
-    try {
-        await apiRequest(`/api/anime/${animeId}/rules`, {
-            method: 'PUT',
-            body: JSON.stringify(rules),
-        });
-        ToastManager.success('搜索规则已保存');
-    } catch (err) { /* handled */ }
+    return withButtonLock(btn, async () => {
+        try {
+            await apiRequest(`/api/anime/${animeId}/rules`, {
+                method: 'PUT',
+                body: JSON.stringify(rules),
+            });
+            ToastManager.success('搜索规则已保存');
+        } catch (err) { /* handled */ }
+    }, '保存中...');
 }
 
 // ==================== 别名管理 ====================
 
-async function addAlias(animeId) {
+async function addAlias(animeId, btn) {
     const input = document.getElementById('alias-input');
     const alias = input.value.trim();
     if (!alias) {
@@ -1410,15 +1479,24 @@ async function addAlias(animeId) {
         return;
     }
 
-    try {
-        await apiRequest(`/api/anime/${animeId}/aliases`, {
-            method: 'POST',
-            body: JSON.stringify({ alias }),
-        });
-        ToastManager.success('别名已添加');
-        input.value = '';
-        setTimeout(() => location.reload(), 800);
-    } catch (err) { /* handled */ }
+    return withButtonLock(btn, async () => {
+        try {
+            await apiRequest(`/api/anime/${animeId}/aliases`, {
+                method: 'POST',
+                body: JSON.stringify({ alias }),
+            });
+            ToastManager.success('别名已添加');
+            input.value = '';
+            // 局部追加别名标签，避免整页 reload
+            const list = document.getElementById('alias-list');
+            if (list) {
+                const tag = document.createElement('span');
+                tag.style.cssText = 'padding:3px 10px;background:var(--bg-input);border-radius:var(--radius-xl);font-size:0.78rem;color:var(--text-muted);';
+                tag.textContent = alias;
+                list.appendChild(tag);
+            }
+        } catch (err) { /* handled */ }
+    }, '添加中...');
 }
 
 // ==================== 集数排序 ====================
