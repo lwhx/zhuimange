@@ -30,9 +30,12 @@ _POOL_MAX_SIZE = 5
 
 def _create_connection() -> sqlite3.Connection:
     """创建新的数据库连接"""
-    conn = sqlite3.connect(get_db_path(), check_same_thread=False)
+    # timeout：连接层获取写锁的等待秒数；配合 PRAGMA busy_timeout 双重保险，
+    # 避免并发同步（EPISODE_SYNC_WORKERS × SOURCE_SEARCH_WORKERS）触发 database is locked。
+    conn = sqlite3.connect(get_db_path(), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -650,6 +653,45 @@ def mark_episode_watched(anime_id: int, ep_num: int, watched: bool = True) -> No
             ), updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
             (anime_id, anime_id)
         )
+
+
+def set_watched_up_to(anime_id: int, watched_ep: int, today: str) -> int:
+    """批量设置观看进度：已开播且 absolute_num <= watched_ep 标记为已看，其余未看。
+
+    与逐集调用 mark_episode_watched 相比，这里用两次 UPDATE 完成，避免 N 次往返。
+    返回本次标记为已看的集数（仅统计已开播集）。
+    """
+    with get_connection() as conn:
+        aired_watched_rows = conn.execute(
+            """UPDATE episodes
+               SET watched = CASE
+                   WHEN air_date != '' AND air_date <= ? AND absolute_num <= ? THEN 1
+                   ELSE 0
+               END
+               WHERE anime_id = ?""",
+            (today, watched_ep, anime_id),
+        )
+        # 对于手动添加（tmdb_id IS NULL）的动漫，所有集都视为已开播
+        anime = conn.execute("SELECT tmdb_id FROM animes WHERE id = ?", (anime_id,)).fetchone()
+        if anime and anime["tmdb_id"] is None:
+            conn.execute(
+                """UPDATE episodes
+                   SET watched = CASE WHEN absolute_num <= ? THEN 1 ELSE 0 END
+                   WHERE anime_id = ?""",
+                (watched_ep, anime_id),
+            )
+
+        conn.execute(
+            """UPDATE animes SET watched_ep = (
+                SELECT COUNT(*) FROM episodes WHERE anime_id = ? AND watched = 1
+            ), updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (anime_id, anime_id),
+        )
+        watched_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM episodes WHERE anime_id = ? AND watched = 1",
+            (anime_id,),
+        ).fetchone()["c"]
+        return int(watched_count)
 
 
 # ==================== 视频源 CRUD ====================

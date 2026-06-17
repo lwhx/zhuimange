@@ -121,26 +121,28 @@ class InvidiousClient:
         return None
 
     def _request(self, endpoint: str, params: Optional[dict] = None) -> Any:
-        """发送 API 请求，失败时尝试切换实例重试"""
-        selected_url = self._get_active_url()
-        request_urls = [selected_url]
+        """发送 API 请求，失败时逐个尝试候选实例直到成功或全部耗尽。"""
+        tried: set[str] = set()
         last_error: Optional[requests.RequestException] = None
+        candidate = self._get_active_url()
 
-        for index, base_url in enumerate(request_urls):
-            url = f"{base_url}{endpoint}"
+        while True:
+            url = f"{candidate}{endpoint}"
+            tried.add(candidate)
             try:
                 logger.debug(f"Invidious 请求: {url}")
                 resp = self.session.get(url, params=params or {}, timeout=self.timeout)
                 resp.raise_for_status()
-                self.current_url = base_url
+                self.current_url = candidate
                 return resp.json()
             except requests.RequestException as e:
                 last_error = e
                 logger.warning(f"Invidious 请求失败: {url} - {e}")
-                if index == 0:
-                    switched_url = self._switch_instance(base_url)
-                    if switched_url and switched_url not in request_urls:
-                        request_urls.append(switched_url)
+                next_url = self._switch_instance(candidate)
+                # 没有可切换的实例，或切到的实例本轮已经试过 → 放弃
+                if not next_url or next_url in tried:
+                    break
+                candidate = next_url
 
         if last_error:
             raise last_error
