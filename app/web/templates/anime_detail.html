@@ -156,8 +156,8 @@
             <div class="form-group">
                 <label>屏蔽关键词（逗号分隔）</label>
                 <input type="text" id="rule-deny-keywords"
-                       value="{{ (anime.rules.deny_keywords if anime.rules else '')|replace(' [', '' )|replace(']', ''
-                    )|replace('\"', '' ) }}" placeholder="例: 剪辑, 解说">
+                       value="{{ (anime.rules.deny_keywords if anime.rules else '')|replace('[', '')|replace(']', '')|replace('\"', '') }}"
+                       placeholder="例: 剪辑, 解说">
             </div>
             <div class="form-group">
                 <label>允许频道 ID（逗号分隔）</label>
@@ -167,8 +167,7 @@
             <div class="form-group">
                 <label>屏蔽频道 ID（逗号分隔）</label>
                 <input type="text" id="rule-deny-channels"
-                       value="{{ (anime.rules.deny_channels if anime.rules else '')|replace(' [', '' )|replace(']', ''
-                    )|replace('\"', '' ) }}">
+                       value="{{ (anime.rules.deny_channels if anime.rules else '')|replace('[', '')|replace(']', '')|replace('\"', '') }}">
             </div>
             <button type="button" class="btn btn--primary btn--sm" onclick="saveRules({{ anime.id }})">保存规则</button>
         </div>
