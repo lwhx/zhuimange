@@ -582,30 +582,40 @@ def get_episode_by_num(anime_id: int, ep_num: int) -> Optional[dict]:
 
 
 def add_episodes(anime_id: int, episodes_data: list[dict]) -> None:
-    """批量添加集数"""
+    """批量添加集数（executemany 一次性提交，减少事务往返）"""
+    if not episodes_data:
+        return
+    rows = [
+        (
+            anime_id,
+            ep.get("season_number", 1),
+            ep.get("episode_number", 0),
+            ep.get("absolute_num", 0),
+            ep.get("title", ""),
+            ep.get("overview", ""),
+            ep.get("air_date", ""),
+            ep.get("still_path", ""),
+        )
+        for ep in episodes_data
+    ]
     with get_connection() as conn:
-        for ep in episodes_data:
-            conn.execute(
-                """INSERT OR IGNORE INTO episodes
-                   (anime_id, season_number, episode_number, absolute_num, title, overview, air_date, still_path)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    anime_id,
-                    ep.get("season_number", 1),
-                    ep.get("episode_number", 0),
-                    ep.get("absolute_num", 0),
-                    ep.get("title", ""),
-                    ep.get("overview", ""),
-                    ep.get("air_date", ""),
-                    ep.get("still_path", ""),
-                )
-            )
+        conn.executemany(
+            """INSERT OR IGNORE INTO episodes
+               (anime_id, season_number, episode_number, absolute_num, title, overview, air_date, still_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
 
 
-def delete_episodes_not_in_absolute_nums(anime_id: int, keep_nums: set[int]) -> int:
-    """删除不在指定 absolute_num 集合内的集数，并同步 watched_ep 统计。"""
+def delete_episodes_not_in_absolute_nums(anime_id: int, keep_nums: set[int]) -> tuple[int, set[int]]:
+    """删除不在指定 absolute_num 集合内的集数，并同步 watched_ep 统计。
+
+    Returns:
+        (deleted_count, remaining_absolute_nums)：删除条数与删除后仍保留的集号集合，
+        调用方可直接复用，无需再次查询 episodes 表。
+    """
     if not keep_nums:
-        return 0
+        return 0, set()
 
     with get_connection() as conn:
         rows = conn.execute(
@@ -636,7 +646,9 @@ def delete_episodes_not_in_absolute_nums(anime_id: int, keep_nums: set[int]) -> 
                 ), updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
                 (anime_id, anime_id),
             )
-        return deleted_count
+
+        remaining_nums = {row["absolute_num"] for row in rows if row["absolute_num"] in keep_nums}
+        return deleted_count, remaining_nums
 
 
 def mark_episode_watched(anime_id: int, ep_num: int, watched: bool = True) -> None:

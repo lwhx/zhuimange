@@ -214,13 +214,12 @@ def _refresh_tmdb_episodes(anime_id: int, anime: dict, emit: Optional[SyncEmitte
             for ep in tmdb_episodes
             if ep.get("absolute_num", 0) > 0
         }
-        deleted_count = db.delete_episodes_not_in_absolute_nums(anime_id, tmdb_nums)
+        deleted_count, existing_nums = db.delete_episodes_not_in_absolute_nums(anime_id, tmdb_nums)
         if deleted_count:
             logger.info(
                 f"TMDB 更新: 清理 {deleted_count} 个非 TMDB 集数记录，anime_id={anime_id}"
             )
 
-        existing_nums = {ep["absolute_num"] for ep in db.get_episodes(anime_id)}
         new_episodes = [
             ep for ep in tmdb_episodes
             if ep.get("absolute_num", 0) not in existing_nums
