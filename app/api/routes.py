@@ -272,7 +272,7 @@ def update_progress(anime_id):
     watched_count = db.set_watched_up_to(anime_id, watched_ep, today)
 
     _clear_anime_cache(anime_id)
-    return success_response(message=f"更新观看进度成功，已看 {watched_count} 集")
+    return success_response({"watched_count": watched_count}, message=f"更新观看进度成功，已看 {watched_count} 集")
 
 
 # ==================== 视频源 ====================
