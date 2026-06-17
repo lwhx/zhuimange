@@ -61,7 +61,7 @@ def health_check():
 def invidious_diagnostics():
     """Invidious 健康诊断"""
     if request.method == 'POST':
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         video_id = data.get('video_id') or 'dQw4w9WgXcQ'
         result = check_invidious_health(video_id=video_id)
         return success_response(result, message="Invidious 健康检测完成")
@@ -86,7 +86,7 @@ def search_anime():
 @api.route('/anime/add', methods=['POST'])
 def add_anime():
     """从 TMDB 添加动漫"""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     tmdb_id = data.get('tmdb_id')
     if not tmdb_id:
         return error_response("缺少 tmdb_id")
@@ -118,7 +118,7 @@ def add_anime():
 @api.route('/anime/add_manual', methods=['POST'])
 def add_anime_manual():
     """手动添加动漫"""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     title = data.get('title', '').strip()
     if not title:
         return error_response("缺少动漫名称")
@@ -249,7 +249,7 @@ def mark_unwatched(anime_id, ep_num):
 @api.route('/anime/<int:anime_id>/progress', methods=['PUT'])
 def update_progress(anime_id):
     """更新观看进度"""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     watched_ep = data.get('watched_ep')
     if watched_ep is None:
         return error_response("缺少 watched_ep")
@@ -262,24 +262,17 @@ def update_progress(anime_id):
     except (TypeError, ValueError):
         return error_response("watched_ep 必须是数字")
 
-    # 批量标记已看
+    # 批量标记已看：单次事务完成，避免逐集 UPDATE 的 N 次往返
     today = date.today().isoformat()
     episodes = db.get_episodes(anime_id)
     aired_episodes = db.filter_aired_episodes(anime, episodes, today)
     if aired_episodes:
         watched_ep = min(watched_ep, max(ep["absolute_num"] for ep in aired_episodes))
-    watched_count = 0
-    for ep in episodes:
-        watched = db.episode_is_aired(anime, ep, today) and ep["absolute_num"] <= watched_ep
-        if watched:
-            watched_count += 1
-            db.mark_episode_watched(anime_id, ep["absolute_num"], True)
-        else:
-            db.mark_episode_watched(anime_id, ep["absolute_num"], False)
 
-    db.update_anime(anime_id, {"watched_ep": watched_count})
+    watched_count = db.set_watched_up_to(anime_id, watched_ep, today)
+
     _clear_anime_cache(anime_id)
-    return success_response(message="更新观看进度成功")
+    return success_response(message=f"更新观看进度成功，已看 {watched_count} 集")
 
 
 # ==================== 视频源 ====================
@@ -321,7 +314,7 @@ def find_sources(anime_id, ep_num):
     if not db.episode_is_aired(anime, episode, date.today().isoformat()):
         return error_response("集数尚未开播", code="EPISODE_NOT_AIRED", status_code=400)
 
-    force = request.json.get('force', False) if request.json else False
+    force = (request.get_json(silent=True) or {}).get('force', False)
     sources = find_sources_for_episode(anime_id, ep_num, force=force)
     return success_response({"count": len(sources)}, message=f"找到 {len(sources)} 个视频源")
 
@@ -346,7 +339,7 @@ def sync_anime(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     mode = data.get('mode', 'incremental')
     task, created = sync_queue.enqueue(anime_id, mode=mode, sync_type="manual")
     message = "同步任务已加入队列" if created else "该动漫已有同步任务正在执行"
@@ -438,12 +431,30 @@ def get_settings():
     return success_response(settings, message="获取设置成功")
 
 
+# 允许通过 /api/settings 写入的字段白名单。
+# 敏感字段（如 auth_password）必须走专用接口，防止绕过旧密码校验。
+_SETTINGS_WHITELIST = frozenset({
+    "auto_sync_enabled", "auto_sync_interval",
+    "match_threshold", "match_recommend_threshold",
+    "invidious_url", "invidious_fallback_urls",
+    "tg_bot_token", "tg_chat_id",
+    "tg_notify_enabled", "tg_backup_enabled", "tg_backup_interval_days",
+    "episode_sort_order",
+})
+
+
 @api.route('/settings', methods=['PUT'])
 def update_settings():
     """更新设置"""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
+    ignored = []
     for key, value in data.items():
-        db.set_setting(key, str(value))
+        if key in _SETTINGS_WHITELIST:
+            db.set_setting(key, str(value))
+        else:
+            ignored.append(key)
+    if ignored:
+        logger.warning(f"update_settings 忽略非白名单字段: {ignored}")
 
     # 如果更新了同步间隔，动态调整调度器
     if 'auto_sync_interval' in data:
@@ -475,7 +486,7 @@ def update_settings():
 def change_password():
     """修改访问密码"""
     from app.core.auth import hash_password, verify_password
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     old_pwd = data.get('old_password', '')
     new_pwd = data.get('new_password', '')
 
@@ -503,7 +514,7 @@ def update_rules(anime_id):
     if not anime:
         return error_response("动漫不存在", code="ANIME_NOT_FOUND", status_code=404)
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     db.set_source_rules(anime_id, data)
     _clear_anime_cache(anime_id)
     return success_response(message="更新搜索规则成功")
@@ -514,7 +525,7 @@ def update_rules(anime_id):
 @api.route('/anime/<int:anime_id>/aliases', methods=['POST'])
 def add_anime_alias(anime_id):
     """添加动漫别名"""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     alias = data.get('alias', '').strip()
     if not alias:
         return error_response("缺少别名")
@@ -563,7 +574,7 @@ def backup_import():
     file = request.files.get('file')
     if not file:
         # 尝试从 JSON body 读取
-        data = request.json
+        data = request.get_json(silent=True)
         if not data:
             return error_response("请上传备份文件")
     else:

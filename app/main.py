@@ -14,6 +14,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app import config
 from app.db.database import (
@@ -38,7 +39,8 @@ REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP Requests', ['method',
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP Request Latency', ['method', 'endpoint'])
 
 csrf = CSRFProtect()
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
+# 启用限流响应头，便于反代/客户端感知 429。
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"], headers_enabled=True)
 cache = Cache()
 
 
@@ -48,6 +50,14 @@ def create_app(test_config: dict = None) -> Flask:
         template_folder=os.path.join(os.path.dirname(__file__), 'web', 'templates'),
         static_folder=os.path.join(os.path.dirname(__file__), 'web', 'static'),
     )
+    # 反向代理（Nginx/Caddy/Docker）后，REMOTE_ADDR 全是代理 IP，
+    # 会让按 IP 的限流（如登录 10/min）误伤所有用户。ProxyFix 从
+    # X-Forwarded-For 还原真实客户端 IP。仅在部署于可信反代后生效，
+    # 通过 PROXY_FIX_TRUSTED_HOPS 控制信任的代理跳数（默认 1）。
+    trusted_hops = int(os.getenv("PROXY_FIX_TRUSTED_HOPS", "1"))
+    if trusted_hops > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_hops, x_proto=1, x_host=1, x_prefix=1)
+
     app.config['SECRET_KEY'] = config.SECRET_KEY
     if not os.getenv("SECRET_KEY"):
         logger.warning("⚠️  SECRET_KEY 使用了自动生成的随机值，生产环境请设置 SECRET_KEY 环境变量！")
@@ -127,7 +137,8 @@ def _test_invidious_connection():
 def _register_middlewares(app: Flask):
     @app.before_request
     def check_auth():
-        allowed = ('login', 'static', 'health', 'ready', 'api.health_check')
+        # health/ready/metrics 供探针与 Prometheus 抓取，不能要求登录
+        allowed = ('login', 'static', 'health', 'ready', 'metrics', 'api.health_check')
         if request.endpoint and request.endpoint in allowed:
             return
         if request.endpoint is None:
