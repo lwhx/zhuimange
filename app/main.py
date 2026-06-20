@@ -13,6 +13,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
+from flask_compress import Compress
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -56,6 +57,8 @@ csrf = CSRFProtect()
 # 启用限流响应头，便于反代/客户端感知 429。
 limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"], headers_enabled=True)
 cache = Cache()
+# gzip 传输压缩：CSS/JS/HTML 等文本资源自动压缩，显著减小传输体积
+compress = Compress()
 
 
 def create_app(test_config: dict = None) -> Flask:
@@ -90,6 +93,7 @@ def create_app(test_config: dict = None) -> Flask:
     csrf.init_app(app)
     limiter.init_app(app)
     cache.init_app(app)
+    compress.init_app(app)
 
     with app.app_context():
         init_db()

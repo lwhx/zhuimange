@@ -6,8 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="追漫阁 - 个人动漫追更管理平台">
     <title>{% block title %}追漫阁{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}?v=11">
+    <link rel="stylesheet" href="{{ url_for('static', filename='base.css') }}?v=12">
     <link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='modal.css') }}?v=1">
+    {% block styles %}{% endblock %}
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script>
         /* 立即应用保存的主题，防止页面闪烁 */

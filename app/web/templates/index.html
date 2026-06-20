@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}追漫阁 - 首页{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}?v=1">
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
