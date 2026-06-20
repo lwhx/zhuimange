@@ -148,6 +148,124 @@ const ToastManager = {
     success(msg) { this.show(msg, 'success'); },
     error(msg) { this.show(msg, 'error'); },
     info(msg) { this.show(msg, 'info'); },
+    warning(msg) { this.show(msg, 'warning', 5000); },
+};
+
+// ==================== 表单脏检测（未保存提示） ====================
+
+const FormDirtyGuard = {
+    snapshot: '',
+    fields: [],
+    saveBtn: null,
+    enabled: false,
+
+    init(selector) {
+        this.fields = Array.from(document.querySelectorAll(selector || '[data-setting]'));
+        if (!this.fields.length) return;
+        this.saveBtn = document.querySelector('[onclick*="saveSettings"]');
+        this.snapshot = this._collect();
+        this.enabled = true;
+
+        this.fields.forEach(field => {
+            const evt = field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input';
+            field.addEventListener(evt, () => this._check());
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (this.enabled && this._collect() !== this.snapshot) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    },
+
+    // 保存成功后调用，重置基线并清除高亮
+    markSaved() {
+        if (!this.enabled) return;
+        this.snapshot = this._collect();
+        this._setDirty(false);
+    },
+
+    _collect() {
+        return this.fields.map(f => f.type === 'checkbox' ? String(f.checked) : f.value).join('\u0001');
+    },
+
+    _check() {
+        this._setDirty(this._collect() !== this.snapshot);
+    },
+
+    _setDirty(dirty) {
+        if (this.saveBtn) {
+            if (dirty) this.saveBtn.classList.add('btn--dirty');
+            else this.saveBtn.classList.remove('btn--dirty');
+        }
+    },
+};
+
+// ==================== 模态框焦点管理（focus trap） ====================
+
+const ModalManager = {
+    activeOverlay: null,
+    previousFocus: null,
+    _keyHandler: null,
+
+    open(overlay) {
+        if (!overlay) return;
+        this.previousFocus = document.activeElement;
+        this.activeOverlay = overlay;
+
+        // 聚焦模态框容器，使屏幕阅读器播报
+        overlay.setAttribute('tabindex', '-1');
+        // 等待 DOM 内容（异步加载的源列表）渲染后再聚焦首个可聚焦元素
+        requestAnimationFrame(() => {
+            const focusable = this._getFocusable(overlay);
+            (focusable[0] || overlay).focus();
+        });
+
+        // 绑定 Tab 循环
+        this._keyHandler = (e) => this._onKeydown(e);
+        overlay.addEventListener('keydown', this._keyHandler);
+    },
+
+    close() {
+        const overlay = this.activeOverlay;
+        if (!overlay) return;
+        if (this._keyHandler) overlay.removeEventListener('keydown', this._keyHandler);
+        overlay.classList.remove('visible');
+        this.activeOverlay = null;
+        this._keyHandler = null;
+        // 恢复触发元素焦点
+        if (this.previousFocus && typeof this.previousFocus.focus === 'function') {
+            this.previousFocus.focus();
+            this.previousFocus = null;
+        }
+    },
+
+    _getFocusable(overlay) {
+        return Array.from(overlay.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )).filter(el => !el.disabled && el.offsetParent !== null);
+    },
+
+    _onKeydown(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSourcesModal();
+            return;
+        }
+        if (e.key !== 'Tab') return;
+        const focusable = this._getFocusable(this.activeOverlay);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    },
 };
 
 // ==================== API 请求 ====================
@@ -174,7 +292,10 @@ async function apiRequest(url, options = {}) {
         }
         return data;
     } catch (err) {
-        ToastManager.error(err.message);
+        // AbortError 是主动取消（如新的搜索请求发起），不提示用户
+        if (err.name !== 'AbortError') {
+            ToastManager.error(err.message);
+        }
         throw err;
     }
 }
@@ -465,6 +586,8 @@ function initEpisodeWorkbench() {
 // ==================== 搜索功能 ====================
 
 let searchTimer = null;
+// 当前搜索请求的 AbortController，新请求发起时取消上一个，避免乱序覆盖
+let searchAbortController = null;
 
 function initSearch() {
     const input = document.getElementById('search-input');
@@ -514,15 +637,39 @@ function initSearch() {
 
 async function searchAnime(query) {
     const results = document.getElementById('search-results');
-    results.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">搜索中...</div>';
+    // 取消上一个未完成的搜索请求，避免乱序返回覆盖当前结果
+    if (searchAbortController) searchAbortController.abort();
+    searchAbortController = new AbortController();
+
+    // 加载态：用骨架条替代纯文字，视觉反馈更明显
+    results.innerHTML = Array.from({ length: 4 }).map(() => `
+        <div class="search-result-item search-result-item--loading">
+            <div class="skeleton search-result-item__poster" style="width:40px;height:56px;"></div>
+            <div class="search-result-item__info" style="flex:1;">
+                <div class="skeleton" style="height:14px;width:60%;margin-bottom:8px;"></div>
+                <div class="skeleton" style="height:12px;width:40%;"></div>
+            </div>
+        </div>`).join('');
     results.classList.add('visible');
 
     try {
         const url = `/api/search?q=${encodeURIComponent(query)}`;
-        const resp = await apiRequest(url);
+        const resp = await apiRequest(url, { signal: searchAbortController.signal });
+        // 响应到达后确认仍是当前请求，避免被取消的请求渲染
+        if (searchAbortController?.signal.aborted) return;
         const items = resp.data || resp;
         if (items.length === 0) {
-            results.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">没有找到相关动漫</div>';
+            // 空结果：引导用户使用手动添加，将查询词预填进去
+            // onclick 参数用 HTML 实体编码，避免查询词中的特殊字符破坏属性
+            const safeQuery = escapeHtml(query);
+            results.innerHTML = `
+                <div style="padding:20px;color:var(--text-muted);text-align:center;">
+                    <div style="margin-bottom:10px;">没有找到“${safeQuery}”相关动漫</div>
+                    <button type="button" class="btn btn--secondary btn--sm"
+                        onclick="prefillManualAdd(this.dataset.q)" data-q="${safeQuery}">
+                        ✏️ 手动添加“${safeQuery}”
+                    </button>
+                </div>`;
             return;
         }
 
@@ -548,7 +695,9 @@ async function searchAnime(query) {
             </div>`;
         }).join('');
     } catch (err) {
-        results.innerHTML = '<div style="padding:16px;color:var(--danger);text-align:center;">搜索失败</div>';
+        // AbortError 是被新请求取消，静默处理；其他错误才提示
+        if (err.name === 'AbortError') return;
+        results.innerHTML = '<div style="padding:16px;color:var(--danger);text-align:center;">搜索失败，请稍后重试</div>';
     }
 }
 
@@ -562,13 +711,15 @@ async function addAnime(tmdbId, btn) {
             ToastManager.success('添加成功！');
 
             const animeId = data.data.anime_id;
-            const animeData = await apiRequest(`/api/anime/${animeId}`);
-            const anime = animeData.data;
-
-            createAnimeCard(anime);
 
             document.getElementById('search-results').classList.remove('visible');
             document.getElementById('search-input').value = '';
+
+            // 新添加的动漫尚无视频源，引导用户进入详情页同步
+            ToastManager.success('添加成功！即将跳转详情页同步视频源');
+            setTimeout(() => {
+                window.location.href = `/anime/${animeId}`;
+            }, 800);
         } catch (err) {
             // error already shown by apiRequest
         }
@@ -645,6 +796,20 @@ function toggleManualAdd() {
     form.classList.toggle('visible');
 }
 
+// 从搜索空状态引导：展开手动添加表单并预填标题，聚焦标题输入框
+function prefillManualAdd(title = '') {
+    const form = document.getElementById('manual-add-form');
+    if (form) form.classList.add('visible');
+    const titleInput = document.getElementById('manual-title');
+    if (titleInput) {
+        titleInput.value = title;
+        titleInput.focus();
+        // 关闭搜索下拉，避免遮挡表单
+        const results = document.getElementById('search-results');
+        if (results) results.classList.remove('visible');
+    }
+}
+
 async function submitManualAdd(btn) {
     const title = document.getElementById('manual-title').value.trim();
     const totalEp = parseInt(document.getElementById('manual-total-ep').value || '0', 10);
@@ -668,18 +833,18 @@ async function submitManualAdd(btn) {
                     aliases,
                 }),
             });
-            ToastManager.success('添加成功！');
-
             const animeId = data.data.anime_id;
-            const animeData = await apiRequest(`/api/anime/${animeId}`);
-            const anime = animeData.data;
-
-            createAnimeCard(anime);
 
             document.getElementById('manual-title').value = '';
             document.getElementById('manual-total-ep').value = '';
             document.getElementById('manual-aliases').value = '';
             toggleManualAdd();
+
+            // 手动添加的动漫同样需要同步视频源，引导跳转详情页
+            ToastManager.success('添加成功！即将跳转详情页同步视频源');
+            setTimeout(() => {
+                window.location.href = `/anime/${animeId}`;
+            }, 800);
         } catch (err) { /* handled */ }
     }, '添加中...');
 }
@@ -811,11 +976,15 @@ async function openSourcesModal(animeId, epNum) {
         </div>
     `;
     overlay.classList.add('visible');
+    ModalManager.open(overlay);
 
     try {
         const resp = await fetch(`/anime/${animeId}/episode/${epNum}/sources`);
         if (!resp.ok) throw new Error(`加载失败 (${resp.status})`);
         body.innerHTML = await resp.text();
+        // 内容渲染后聚焦首个可交互元素（findSources 等）
+        const focusable = ModalManager._getFocusable(overlay);
+        if (focusable[0]) focusable[0].focus();
     } catch (err) {
         body.innerHTML = `
             <div class="modal-state modal-state--error">
@@ -828,9 +997,7 @@ async function openSourcesModal(animeId, epNum) {
 }
 
 function closeSourcesModal() {
-    const overlay = document.getElementById('sources-modal-overlay');
-    if (!overlay) return;
-    overlay.classList.remove('visible');
+    ModalManager.close();
 }
 
 async function findSources(animeId, epNum, force = false) {
@@ -878,6 +1045,36 @@ const SyncWorkbench = {
     eventSource: null,
     summaryTimer: null,
     doneTaskIds: new Set(),
+};
+
+// 同步任务持久化：刷新/返回详情页后可恢复进度显示与 SSE 重连
+const SyncTaskStore = {
+    KEY: 'zmg_sync_task',
+
+    save({ taskId, animeId, mode }) {
+        if (!taskId || !animeId) return;
+        try {
+            localStorage.setItem(this.KEY, JSON.stringify({ taskId, animeId, mode, ts: Date.now() }));
+        } catch (e) { /* localStorage 不可用时静默降级 */ }
+    },
+
+    load() {
+        try {
+            const raw = localStorage.getItem(this.KEY);
+            if (!raw) return null;
+            const data = JSON.parse(raw);
+            // 超过 30 分钟的任务视为过期，避免无限保留僵尸条目
+            if (!data || !data.taskId || Date.now() - (data.ts || 0) > 30 * 60 * 1000) {
+                this.clear();
+                return null;
+            }
+            return data;
+        } catch (e) { return null; }
+    },
+
+    clear() {
+        try { localStorage.removeItem(this.KEY); } catch (e) { }
+    },
 };
 
 function getSyncElements() {
@@ -959,6 +1156,8 @@ function openSyncTaskStream({ animeId, taskId, mode, reconnect = false }) {
     SyncWorkbench.animeId = animeId;
     SyncWorkbench.mode = mode || 'incremental';
     SyncWorkbench.latestSources = 0;
+    // 持久化任务，刷新页面后可恢复
+    SyncTaskStore.save({ taskId, animeId, mode: SyncWorkbench.mode });
 
     setSyncButtonsBusy(true, SyncWorkbench.mode);
     setSyncReconnectVisible(false);
@@ -1077,6 +1276,7 @@ function handleSyncStreamEvent(data, sessionId) {
 function finishSyncTask(data, sessionId) {
     closeSyncEventSource();
     setSyncReconnectVisible(false);
+    SyncTaskStore.clear();
     updateSyncCard({
         stage: '同步完成',
         percent: 100,
@@ -1091,11 +1291,20 @@ function finishSyncTask(data, sessionId) {
     const taskId = data.task_id || SyncWorkbench.taskId;
     if (!SyncWorkbench.doneTaskIds.has(taskId)) {
         SyncWorkbench.doneTaskIds.add(taskId);
-        ToastManager.success(
-            SyncWorkbench.mode === 'full'
-                ? `全量刷新完成: ${data.synced} 集找到 ${data.total_sources} 个视频源`
-                : `增量同步完成: 同步 ${data.synced} 集，跳过 ${data.skipped || 0} 集，找到 ${data.total_sources} 个视频源`
-        );
+        const synced = data.synced || 0;
+        const target = data.target || 0;
+        // synced=0 但确实尝试过同步：不报"成功"，给出可操作的引导
+        if (synced === 0 && target > 0) {
+            ToastManager.warning(
+                `未找到视频源（尝试 ${target} 集，0 命中）。可能是 Invidious 实例不可用、匹配分过低或确实无资源，请到「诊断」检查实例状态`
+            );
+        } else {
+            ToastManager.success(
+                SyncWorkbench.mode === 'full'
+                    ? `全量刷新完成: ${synced} 集找到 ${data.total_sources} 个视频源`
+                    : `增量同步完成: 同步 ${synced} 集，跳过 ${data.skipped || 0} 集，找到 ${data.total_sources} 个视频源`
+            );
+        }
     }
 
     setTimeout(() => {
@@ -1115,6 +1324,7 @@ function failSyncTask(message) {
     closeSyncEventSource();
     setSyncButtonsBusy(false);
     setSyncReconnectVisible(false);
+    SyncTaskStore.clear();
     updateSyncCard({ stage: '同步失败', text: message });
     ToastManager.error(message);
 }
@@ -1186,6 +1396,47 @@ async function reconnectSyncTask() {
         });
     } catch (err) {
         setButtonLoading(reconnectBtn, false);
+    }
+}
+
+/**
+ * 详情页加载时恢复上次未完成的同步任务（刷新/返回后进度不丢失）
+ */
+async function restoreSyncTaskIfNeeded() {
+    // 仅在详情页（存在同步按钮）处理
+    if (!document.getElementById('sync-btn')) return;
+    const stored = SyncTaskStore.load();
+    if (!stored) return;
+
+    // 仅恢复当前详情页对应动漫的任务，避免跨页串扰
+    const detailInfo = document.querySelector('.anime-detail__info[data-anime-id]');
+    if (!detailInfo || String(stored.animeId) !== String(detailInfo.dataset.animeId)) return;
+
+    try {
+        const resp = await apiRequest(`/api/sync_tasks/${stored.taskId}`);
+        const task = resp.data;
+        if (task.status === 'success' || task.status === 'error') {
+            // 任务已结束，清理残留的持久化条目
+            SyncTaskStore.clear();
+            return;
+        }
+        // 任务仍在进行中：恢复工作台状态并重连 SSE
+        SyncWorkbench.taskId = stored.taskId;
+        SyncWorkbench.animeId = stored.animeId;
+        updateSyncCard({
+            stage: '恢复中',
+            percent: 0,
+            text: '检测到上次未完成的同步任务，正在恢复...',
+        });
+        openSyncTaskStream({
+            animeId: stored.animeId,
+            taskId: stored.taskId,
+            mode: task.mode || stored.mode || 'incremental',
+            reconnect: true,
+        });
+    } catch (err) {
+        // 任务可能已被清理，移除过期条目
+        SyncTaskStore.clear();
     }
 }
 
@@ -1344,7 +1595,9 @@ async function _refreshEpisodeList(animeId) {
         updateContinueWatchButton();
         applyEpisodeFilters();
     } catch (err) {
-        location.reload();
+        // 局部刷新失败时不整页 reload，避免丢失同步进度上下文与滚动位置
+        // apiRequest 已提示请求错误，这里额外说明数据可能需稍后刷新查看
+        ToastManager.info('集数列表刷新失败，可稍后刷新页面查看最新数据');
     }
 }
 
@@ -1497,6 +1750,7 @@ async function saveSettings() {
             body: JSON.stringify(settings),
         });
         ToastManager.success('设置已保存');
+        FormDirtyGuard.markSaved();
     } catch (err) { /* handled */ }
 }
 
@@ -1582,7 +1836,17 @@ function toggleEpisodeSort() {
         body: JSON.stringify({ episode_sort_order: newOrder }),
     }).then(() => {
         ToastManager.info(newOrder === 'desc' ? '已切换为倒序' : '已切换为正序');
-    }).catch(() => { });
+    }).catch(() => {
+        // 保存失败时回滚 UI 到原排序，并提示用户
+        btn.dataset.sortOrder = currentOrder;
+        btn.textContent = currentOrder === 'desc' ? '↓ 倒序' : '↑ 正序';
+        btn.setAttribute('aria-label', `当前${currentOrder === 'desc' ? '倒序' : '正序'}，点击切换集数排序`);
+        const grid = document.querySelector('.episodes-grid');
+        if (grid) {
+            grid.append(...Array.from(grid.children).reverse());
+        }
+        ToastManager.error('排序偏好保存失败，请重试');
+    });
 }
 
 // ==================== 筛选 ====================
@@ -1611,7 +1875,7 @@ function filterAnimes(filter) {
 
 // ==================== 修改密码 ====================
 
-async function changePassword() {
+async function changePassword(btn) {
     const oldPwd = document.getElementById('old-password').value;
     const newPwd = document.getElementById('new-password').value;
 
@@ -1620,17 +1884,19 @@ async function changePassword() {
         return;
     }
 
-    try {
-        const data = await apiRequest('/api/change_password', {
-            method: 'POST',
-            body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
-        });
-        ToastManager.success('密码修改成功');
-        document.getElementById('old-password').value = '';
-        document.getElementById('new-password').value = '';
-    } catch (err) {
-        // handled by apiRequest
-    }
+    return withButtonLock(btn, async () => {
+        try {
+            const data = await apiRequest('/api/change_password', {
+                method: 'POST',
+                body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
+            });
+            ToastManager.success('密码修改成功');
+            document.getElementById('old-password').value = '';
+            document.getElementById('new-password').value = '';
+        } catch (err) {
+            // handled by apiRequest
+        }
+    }, '修改中...');
 }
 
 // ==================== 备份与恢复 ====================
@@ -1673,19 +1939,16 @@ async function importBackup(input) {
 
 async function telegramBackup() {
     const btn = document.getElementById('tg-backup-btn');
-    btn.disabled = true;
-    btn.textContent = '发送中...';
-
-    try {
-        const data = await apiRequest('/api/backup/telegram', {
-            method: 'POST',
-        });
-        ToastManager.success(`备份已发送到 Telegram: ${data.data?.filename || '成功'}`);
-    } catch (err) {
-        // handled by apiRequest
-    }
-    btn.disabled = false;
-    btn.textContent = '📨 发送到 TG';
+    return withButtonLock(btn, async () => {
+        try {
+            const data = await apiRequest('/api/backup/telegram', {
+                method: 'POST',
+            });
+            ToastManager.success(`备份已发送到 Telegram: ${data.data?.filename || '成功'}`);
+        } catch (err) {
+            // handled by apiRequest
+        }
+    }, '发送中...');
 }
 
 // ==================== 诊断中心 ====================
@@ -1868,6 +2131,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initEpisodeWorkbench();
     initInvidiousFallbackEditor();
     loadInvidiousHealth();
+    // 设置页：初始化未保存改动检测（须在编辑器初始化之后，确保快照基线稳定）
+    FormDirtyGuard.init();
+    // 详情页：恢复上次未完成的同步任务进度
+    restoreSyncTaskIfNeeded();
 
     // 主题切换按钮
     const themeToggle = document.querySelector('.navbar__theme-toggle');
@@ -1880,11 +2147,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateThemeDropdownActive();
 
-    // ESC 关闭模态框和主题下拉菜单
+    // 全局快捷键：/ 聚焦搜索、Esc 关闭弹层
     document.addEventListener('keydown', (e) => {
+        // / 聚焦搜索框（仅在非输入态且无修饰键时触发，避免影响正常输入）
+        if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const tag = (document.activeElement?.tagName || '').toLowerCase();
+            const isEditing = tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable;
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && !isEditing) {
+                e.preventDefault();
+                searchInput.focus();
+                searchInput.select();
+                return;
+            }
+        }
         if (e.key === 'Escape') {
             closeSourcesModal();
             closeThemeDropdown();
+            // 关闭搜索结果下拉
+            const searchResults = document.getElementById('search-results');
+            if (searchResults?.classList.contains('visible')) {
+                searchResults.classList.remove('visible');
+            }
         }
     });
 

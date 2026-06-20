@@ -136,6 +136,7 @@
                 <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">看到第</label>
                 <input type="number" id="progress-input" value="{{ anime.watched_ep or 0 }}" min="0"
                     max="{{ anime.episodes|length }}"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();updateProgress({{ anime.id }}, document.querySelector('#progress-section .btn'))}"
                     style="width:80px;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
                 <label style="white-space:nowrap;font-size:0.85rem;color:var(--text-secondary);">集</label>
                 <button type="button" class="btn btn--primary btn--sm" onclick="updateProgress({{ anime.id }}, this)">更新</button>
@@ -174,6 +175,7 @@
         <div id="alias-section" class="manual-add-form" style="margin-top:0;">
             <div style="display:flex;gap:8px;align-items:center;">
                 <input type="text" id="alias-input" placeholder="输入新别名"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();addAlias({{ anime.id }}, this.parentElement.querySelector('.btn'))}"
                     style="flex:1;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
                 <button type="button" class="btn btn--primary btn--sm" onclick="addAlias({{ anime.id }}, this)">添加</button>
             </div>

@@ -209,7 +209,8 @@
             <span class="settings-row__label-text">当前密码</span>
         </div>
         <div class="settings-row__control">
-            <input type="password" id="old-password" placeholder="输入当前密码" style="width:200px;">
+            <input type="password" id="old-password" placeholder="输入当前密码" style="width:200px;"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('new-password').focus()}">
         </div>
     </div>
 
@@ -218,7 +219,8 @@
             <span class="settings-row__label-text">新密码</span>
         </div>
         <div class="settings-row__control">
-            <input type="password" id="new-password" placeholder="输入新密码" style="width:200px;">
+            <input type="password" id="new-password" placeholder="输入新密码" style="width:200px;"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();changePassword(this.closest('.settings-section').querySelector('.btn'))}">
         </div>
     </div>
 
@@ -227,7 +229,7 @@
             <span class="settings-row__label-text"></span>
         </div>
         <div class="settings-row__control">
-            <button type="button" class="btn btn--secondary btn--sm" onclick="changePassword()">🔒 修改密码</button>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="changePassword(this)">🔒 修改密码</button>
         </div>
     </div>
 </div>

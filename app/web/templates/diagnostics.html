@@ -8,7 +8,8 @@
         <p class="page-header__subtitle">监控自部署视频搜索服务的连通性、视频详情链路和实例切换状态</p>
     </div>
     <div class="diagnostics-actions">
-        <input type="text" id="invidious-video-id-input" class="diagnostics-video-input" value="dQw4w9WgXcQ" placeholder="输入 YouTube 视频 ID">
+        <input type="text" id="invidious-video-id-input" class="diagnostics-video-input" value="dQw4w9WgXcQ" placeholder="输入 YouTube 视频 ID"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();checkInvidiousHealth()}">
         <button type="button" class="btn btn--primary" id="invidious-check-btn" onclick="checkInvidiousHealth()">🔎 立即检测</button>
     </div>
 </div>

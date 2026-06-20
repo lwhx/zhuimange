@@ -1706,6 +1706,17 @@ textarea {
     border-radius: var(--radius-sm);
 }
 
+/* 未保存改动的按钮高亮：脉冲提示 */
+.btn--dirty {
+    animation: btn-dirty-pulse 1.8s ease-in-out infinite;
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+}
+
+@keyframes btn-dirty-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+    50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+}
+
 /* ===== 模态框 ===== */
 .modal-overlay {
     position: fixed;
@@ -2677,6 +2688,10 @@ textarea {
 
 .toast--error {
     background: linear-gradient(135deg, #dc2626, #ef4444);
+}
+
+.toast--warning {
+    background: linear-gradient(135deg, #d97706, #f59e0b);
 }
 
 .toast--info {
