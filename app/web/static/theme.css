@@ -734,6 +734,17 @@ textarea {
     transition: background var(--transition-normal);
 }
 
+/* 渐进渲染：隐藏待加载卡片，确保 [hidden] 在 grid 下生效 */
+.anime-card[hidden] {
+    display: none !important;
+}
+
+/* 滚动加载哨兵：跨列占位，触发底部观测 */
+.anime-grid__sentinel {
+    grid-column: 1 / -1;
+    height: 1px;
+}
+
 .anime-card {
     background: var(--gradient-card);
     border: 1px solid var(--border-color);
@@ -797,6 +808,22 @@ textarea {
 .anime-card:hover .anime-card__poster {
     transform: scale(1.07);
     filter: saturate(1.12) contrast(1.04);
+}
+
+/* 海报加载失败时显示占位（保留卡片高度，避免布局塌陷） */
+.anime-card__poster--broken {
+    opacity: 0;
+}
+
+.anime-card__poster-wrap:has(.anime-card__poster--broken)::before {
+    content: '🎬';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    opacity: 0.4;
 }
 
 .anime-card__badge {

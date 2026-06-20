@@ -219,6 +219,17 @@ def _register_middlewares(app: Flask):
         )
         return response
 
+    @app.after_request
+    def add_cache_headers(response):
+        # 静态资源（CSS/JS/字体）带 ?v= 版本指纹，可长期强缓存；
+        # 文件内容变更时版本号随之更新，天然失效。
+        if request.endpoint == 'static':
+            response.headers['Cache-Control'] = 'public, max-age=31536000'
+        # HTML 页面与 API 响应默认不缓存，避免改版/数据更新后拿到旧内容
+        elif response.content_type and 'text/html' in response.content_type:
+            response.headers['Cache-Control'] = 'no-cache'
+        return response
+
 
 def _register_error_handlers(app: Flask):
     @app.errorhandler(400)

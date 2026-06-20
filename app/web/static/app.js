@@ -151,6 +151,45 @@ const ToastManager = {
     warning(msg) { this.show(msg, 'warning', 5000); },
 };
 
+// ==================== 首页列表滚动加载（渐进渲染） ====================
+
+// 首屏渲染卡片数，超出部分延迟到滚动接近底部时分批显示
+const ANIME_GRID_BATCH = 24;
+
+function initAnimeGridLazyLoad() {
+    const grid = document.querySelector('.anime-grid');
+    if (!grid) return;
+    const cards = Array.from(grid.querySelectorAll('.anime-card'));
+    // 数量不多时无需懒加载，避免引入额外开销
+    if (cards.length <= ANIME_GRID_BATCH) return;
+
+    // 首屏之外的卡片先隐藏，等待滚动加载
+    cards.slice(ANIME_GRID_BATCH).forEach(card => card.setAttribute('hidden', ''));
+
+    const sentinel = document.createElement('div');
+    sentinel.className = 'anime-grid__sentinel';
+    sentinel.setAttribute('aria-hidden', 'true');
+    grid.appendChild(sentinel);
+
+    let nextIndex = ANIME_GRID_BATCH;
+    const io = new IntersectionObserver((entries) => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        // 显示下一批
+        const end = Math.min(nextIndex + ANIME_GRID_BATCH, cards.length);
+        for (let i = nextIndex; i < end; i++) {
+            cards[i].removeAttribute('hidden');
+        }
+        nextIndex = end;
+        // 全部已显示，停止观察并移除哨兵
+        if (nextIndex >= cards.length) {
+            io.disconnect();
+            sentinel.remove();
+        }
+    }, { rootMargin: '300px' });
+
+    io.observe(sentinel);
+}
+
 // ==================== 表单脏检测（未保存提示） ====================
 
 const FormDirtyGuard = {
@@ -980,7 +1019,20 @@ async function openSourcesModal(animeId, epNum) {
 
     try {
         const resp = await fetch(`/anime/${animeId}/episode/${epNum}/sources`);
-        if (!resp.ok) throw new Error(`加载失败 (${resp.status})`);
+        if (!resp.ok) {
+            // 读取后端返回的具体原因（如"集数尚未开播"），给出可操作提示
+            const reason = (await resp.text()).trim();
+            const hint = reason || (resp.status === 404 ? '该集数暂不可用' : `加载失败 (${resp.status})`);
+            const isNotAired = hint.includes('尚未开播') || hint.includes('不存在');
+            body.innerHTML = `
+                <div class="modal-state modal-state--error">
+                    <div class="modal-state__icon">${isNotAired ? '⏳' : '⚠️'}</div>
+                    <div class="modal-state__title">${escapeHtml(hint)}</div>
+                    <div class="modal-state__desc">${isNotAired ? '该集数尚未到播出时间，请稍后再来查看。' : '网络或服务开了小差，请稍后重试。'}</div>
+                </div>
+            `;
+            return;
+        }
         body.innerHTML = await resp.text();
         // 内容渲染后聚焦首个可交互元素（findSources 等）
         const focusable = ModalManager._getFocusable(overlay);
@@ -990,7 +1042,7 @@ async function openSourcesModal(animeId, epNum) {
             <div class="modal-state modal-state--error">
                 <div class="modal-state__icon">⚠️</div>
                 <div class="modal-state__title">视频源加载失败</div>
-                <div class="modal-state__desc">网络或服务开了小差，请稍后重试。</div>
+                <div class="modal-state__desc">网络连接异常，请检查网络后重试。</div>
             </div>
         `;
     }
@@ -2131,6 +2183,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initEpisodeWorkbench();
     initInvidiousFallbackEditor();
     loadInvidiousHealth();
+    // 首页：动漫列表渐进渲染，减少首屏 DOM 开销
+    initAnimeGridLazyLoad();
     // 设置页：初始化未保存改动检测（须在编辑器初始化之后，确保快照基线稳定）
     FormDirtyGuard.init();
     // 详情页：恢复上次未完成的同步任务进度
