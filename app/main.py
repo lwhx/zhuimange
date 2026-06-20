@@ -177,6 +177,17 @@ def _test_invidious_connection():
         logger.error(f"Invidious 初始化出错: {e}")
 
 
+def _get_invidious_thumb_base() -> str:
+    """取 Invidious 主实例地址用于拼接视频缩略图（/vi/<id>/...），避免直连 YouTube"""
+    try:
+        from app.core.invidious_client import get_invidious_client
+        client = get_invidious_client()
+        client.refresh_instances()
+        return (client.primary_url or "").rstrip("/")
+    except Exception:
+        return ""
+
+
 def _register_middlewares(app: Flask):
     @app.before_request
     def check_auth():
@@ -212,8 +223,9 @@ def _register_middlewares(app: Flask):
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
-            "img-src 'self' https://image.tmdb.org https://img.youtube.com "
-            "https://lain.bgm.tv data:; "
+            # img-src 放宽：海报/缩略图来源含用户配置的 Invidious 实例（自部署，域名/IP 不固定），
+            # img 标签无法执行脚本，放宽协议头风险可控而功能必要
+            "img-src 'self' https: http: data:; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self' 'unsafe-inline'; "
             "connect-src 'self'; "
@@ -361,8 +373,15 @@ def _register_routes(app: Flask):
             return "集数尚未开播", 404
 
         sources = get_sources_for_episode(episode["id"], include_invalid=True)
+        invidious_base = _get_invidious_thumb_base()
         for source in sources:
             source["youtube_url"] = invidious_to_youtube(source["video_id"])
+            # 缩略图优先用 Invidious 代理路径（国内可访问），避免 img.youtube.com 不可达
+            vid = source.get("video_id", "")
+            if vid and invidious_base:
+                source["thumb_url"] = f"{invidious_base}/vi/{vid}/mqdefault.jpg"
+            else:
+                source["thumb_url"] = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg"
             source["duration_fmt"] = format_duration(source.get("duration", 0))
             source["view_count_fmt"] = format_view_count(source.get("view_count", 0))
 

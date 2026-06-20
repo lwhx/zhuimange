@@ -273,7 +273,11 @@ def _discover_latest_episodes(anime_id: int, anime: dict, emit: Optional[SyncEmi
 
 
 def _ensure_manual_poster(anime_id: int, first_video_id: str, episodes: list[dict]) -> str:
-    """手动添加动漫没有封面时，用最高分视频缩略图补一个封面。"""
+    """手动添加动漫没有封面时，用最高分视频缩略图补一个封面。
+
+    优先用 Invidious 实例的缩略图代理路径（实例国内可访问），
+    避免 img.youtube.com 在部分网络环境下不可达导致海报永久加载失败。
+    """
     anime = db.get_anime(anime_id)
     if not anime or anime.get("poster_url"):
         return ""
@@ -288,10 +292,27 @@ def _ensure_manual_poster(anime_id: int, first_video_id: str, episodes: list[dic
     if not video_id:
         return ""
 
-    poster_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+    invidious_base = _resolve_poster_invidious_base()
+    if invidious_base:
+        poster_url = f"{invidious_base}/vi/{video_id}/hqdefault.jpg"
+    else:
+        # 没有可用 Invidious 实例时回退 YouTube（虽可能不可达，但保留兜底）
+        poster_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
     db.update_anime(anime_id, {"poster_url": poster_url})
     logger.info(f"自动设置封面(视频缩略图): {poster_url}")
     return poster_url
+
+
+def _resolve_poster_invidious_base() -> str:
+    """取当前 Invidious 客户端的主实例地址（规范化、去尾斜杠）用于拼接缩略图"""
+    try:
+        from app.core.invidious_client import get_invidious_client
+        client = get_invidious_client()
+        client.refresh_instances()
+        return (client.primary_url or "").rstrip("/")
+    except Exception as e:
+        logger.warning(f"获取 Invidious 实例地址用于封面失败: {e}")
+        return ""
 
 
 def _first_source_video_id(ep: Optional[dict]) -> str:
