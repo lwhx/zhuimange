@@ -64,7 +64,7 @@
         data-unwatched="{{ anime.unwatched_count }}">
         <div class="anime-card__poster-wrap">
             {% if anime.poster_url %}
-            <img class="anime-card__poster" src="{{ anime.poster_url }}" alt="{{ anime.title_cn }}"
+            <img class="anime-card__poster" src="{{ anime.poster_url|proxy_img }}" alt="{{ anime.title_cn }}"
                 loading="lazy" decoding="async"
                 onerror="this.classList.add('anime-card__poster--broken')">
             {% endif %}

@@ -106,6 +106,7 @@ def create_app(test_config: dict = None) -> Flask:
 
     app.jinja_env.filters['format_duration'] = format_duration
     app.jinja_env.filters['format_views'] = format_view_count
+    app.jinja_env.filters['proxy_img'] = _proxy_img_filter
 
     _register_middlewares(app)
     _register_error_handlers(app)
@@ -188,11 +189,43 @@ def _get_invidious_thumb_base() -> str:
         return ""
 
 
+def _is_https_request():
+    """判断当前请求是否为 HTTPS（含反向代理透传的 X-Forwarded-Proto）"""
+    from flask import request
+    if request.is_secure:
+        return True
+    # 反代场景：nginx/cloudflare 用 http 转发到 Flask，但带 X-Forwarded-Proto: https
+    return request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+
+
+def _proxy_img_filter(url):
+    """Jinja filter：HTTPS 站点下把 http:// 外部图片改写为同源代理 URL，避免混合内容拦截。
+
+    - https:// 图片：原样返回（无混合内容问题）
+    - http:// 图片且当前请求是 HTTPS：改写为 /api/proxy_image?url=...
+    - 本地 HTTP 部署：原样返回（无代理开销）
+    """
+    if not url:
+        return url
+    if not url.startswith('http://'):
+        return url
+    # 仅在 HTTPS 页面才需要代理
+    try:
+        if not _is_https_request():
+            return url
+    except Exception:
+        # 非请求上下文（如后台任务）时原样返回
+        return url
+    from urllib.parse import quote
+    return f'/api/proxy_image?url={quote(url, safe="")}'
+
+
 def _register_middlewares(app: Flask):
     @app.before_request
     def check_auth():
-        # health/ready/metrics 供探针与 Prometheus 抓取，不能要求登录
-        allowed = ('login', 'static', 'health', 'ready', 'metrics', 'api.health_check')
+        # health/ready/metrics 供探针与 Prometheus 抓取，不能要求登录；
+        # proxy_image 是页面海报/缩略图的同源代理，浏览器 <img> 加载，白名单已限域名防 SSRF
+        allowed = ('login', 'static', 'health', 'ready', 'metrics', 'api.health_check', 'api.proxy_image')
         if request.endpoint and request.endpoint in allowed:
             return
         if request.endpoint is None:

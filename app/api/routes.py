@@ -4,7 +4,9 @@
 import logging
 from typing import Optional
 from datetime import date, datetime
-from flask import Blueprint, request, jsonify, current_app
+from urllib.parse import urlparse, urlencode
+import requests as _requests
+from flask import Blueprint, request, jsonify, current_app, Response
 from app.db import database as db
 from app.core.tmdb_client import get_tmdb_client
 from app.core.source_finder import find_sources_for_episode
@@ -730,8 +732,79 @@ def storage_check():
         },
         "backups": {
             "count": backup_count,
-            "total_size_bytes": backup_size,
+            "total_space_bytes": backup_size,
             "total_size_mb": round(backup_size / 1024 / 1024, 2),
             "files": backup_files
         }
     })
+
+
+# ==================== 图片代理（解决 HTTPS 混合内容） ====================
+
+# 固定白名单域名，加上用户配置的 Invidious 实例域名
+_PROXY_HOST_WHITELIST = {
+    'image.tmdb.org', 'img.youtube.com', 'i.ytimg.com', 'lain.bgm.net',
+}
+
+
+def _get_proxy_whitelist_hosts():
+    """合并固定白名单与当前配置的 Invidious 实例域名"""
+    hosts = set(_PROXY_HOST_WHITELIST)
+    try:
+        from app.core.invidious_client import get_invidious_client
+        client = get_invidious_client()
+        client.refresh_instances()
+        for url in [client.primary_url, *client.fallback_urls]:
+            host = urlparse(url).hostname
+            if host:
+                hosts.add(host)
+    except Exception:
+        pass
+    return hosts
+
+
+@api.route('/proxy_image')
+def proxy_image():
+    """图片代理：同源转发外部图片，解决 HTTPS 站点加载 HTTP 图片的混合内容拦截。
+
+    仅代理白名单域名（Invidious 实例 + TMDB/YouTube），防止 SSRF 滥用。
+    浏览器请求本接口（同源 HTTPS），后端拉取外部图片并流式返回。
+    """
+    target_url = request.args.get('url', '').strip()
+    if not target_url:
+        return error_response('缺少 url 参数', code='MISSING_URL', status_code=400)
+
+    parsed = urlparse(target_url)
+    # SSRF 防护：仅允许 http/https 且主机在白名单
+    if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+        return error_response('非法的图片地址', code='INVALID_URL', status_code=400)
+    if parsed.hostname not in _get_proxy_whitelist_hosts():
+        return error_response('该图片域名不在允许列表内', code='HOST_NOT_ALLOWED', status_code=403)
+
+    try:
+        upstream = _requests.get(target_url, stream=True, timeout=10,
+                                 headers={'User-Agent': 'zhuimange-image-proxy/1.0'})
+        if upstream.status_code != 200:
+            return error_response(f'上游返回 {upstream.status_code}', code='UPSTREAM_ERROR', status_code=502)
+
+        content_type = upstream.headers.get('Content-Type', 'image/jpeg')
+        # 仅允许图片类型透传
+        if not content_type.startswith('image/'):
+            return error_response('非图片内容', code='NOT_IMAGE', status_code=415)
+
+        def generate():
+            try:
+                for chunk in upstream.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+            finally:
+                upstream.close()
+
+        resp = Response(generate(), content_type=content_type)
+        # 代理图片可长期缓存（海报/缩略图稳定），减轻重复代理开销
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        resp.headers['X-Content-Type-Options'] = 'nosniff'
+        return resp
+    except _requests.RequestException as e:
+        logger.warning(f'图片代理失败: {target_url} -> {e}')
+        return error_response('图片代理请求失败', code='PROXY_ERROR', status_code=502)

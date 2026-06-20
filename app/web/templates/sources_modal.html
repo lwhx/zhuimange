@@ -18,7 +18,7 @@
 <div class="source-item{% if source.health_status == 'invalid' or source.is_valid == 0 %} source-item--invalid{% endif %}">
     <a href="{{ source.youtube_url }}" target="_blank" rel="noopener" class="source-item__thumb-wrap">
         <img class="source-item__thumb"
-             src="{{ source.thumb_url }}"
+             src="{{ source.thumb_url|proxy_img }}"
              alt="{{ source.title }}" loading="lazy">
         <span class="source-item__thumb-play">▶</span>
     </a>
