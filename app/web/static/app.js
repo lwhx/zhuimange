@@ -1367,11 +1367,23 @@ function initInvidiousFallbackEditor() {
     const hidden = document.getElementById('invidious-fallback-urls');
     if (!editor || !hidden) return;
     const urls = parseInvidiousFallbackUrls(hidden.value);
+    const weights = parseInvidiousInstanceWeights(
+        document.getElementById('invidious-instance-weights')?.value
+    );
+    // 若权重配置为空（旧用户首次升级），按默认规则填充：主 7，备用整除均分 3
+    const fallbackDefaults = defaultFallbackWeights(urls.length);
     editor.innerHTML = '';
-    urls.forEach(url => addInvidiousFallbackRow(url));
+    urls.forEach((url, index) => addInvidiousFallbackRow(url, weights[url] ?? fallbackDefaults[index] ?? 1));
     if (!urls.length) {
         editor.innerHTML = '<div class="invidious-instance-empty">暂无备用实例，点击下方按钮添加自部署实例</div>';
     }
+    // 主实例权重：配置缺省时取默认 7
+    const primaryUrl = document.getElementById('invidious-primary-url')?.value.trim();
+    const primaryInput = document.getElementById('invidious-primary-weight');
+    if (primaryInput) {
+        primaryInput.value = (primaryUrl && weights[primaryUrl] != null) ? weights[primaryUrl] : 7;
+    }
+    syncInvidiousWeightsSetting();
 }
 
 function parseInvidiousFallbackUrls(rawValue) {
@@ -1386,7 +1398,32 @@ function parseInvidiousFallbackUrls(rawValue) {
     return text.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
 }
 
-function addInvidiousFallbackRow(value = '') {
+function parseInvidiousInstanceWeights(rawValue) {
+    const text = (rawValue || '').trim();
+    if (!text) return {};
+    try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const result = {};
+            Object.entries(parsed).forEach(([url, weight]) => {
+                const normalized = String(url || '').trim().replace(/\/+$/, '');
+                if (normalized) result[normalized] = Number(weight) || 0;
+            });
+            return result;
+        }
+    } catch (err) { }
+    return {};
+}
+
+// 备用实例默认权重：把 3 整除均分到 count 个备用，余数分给前几个（复刻旧分布）
+function defaultFallbackWeights(count) {
+    if (!count) return [];
+    const base = Math.floor(3 / count);
+    const extra = 3 % count;
+    return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
+function addInvidiousFallbackRow(value = '', weight = 1) {
     const editor = document.getElementById('invidious-fallback-editor');
     if (!editor) return;
     const empty = editor.querySelector('.invidious-instance-empty');
@@ -1396,10 +1433,12 @@ function addInvidiousFallbackRow(value = '') {
     row.innerHTML = `
         <span class="invidious-instance-row__badge">备用</span>
         <input type="text" class="invidious-instance-row__input" value="${escapeHtml(value)}" placeholder="https://backup-invidious.example.com" oninput="syncInvidiousFallbackSetting()">
+        <span class="invidious-weight-inline">权重 <input type="number" class="invidious-instance-row__weight" min="0" max="100" value="${Number(weight) || 0}" style="width:70px;" oninput="syncInvidiousWeightsSetting()"></span>
         <button type="button" class="invidious-instance-row__remove" onclick="removeInvidiousFallbackRow(this)" aria-label="删除备用实例">删除</button>
     `;
     editor.appendChild(row);
     syncInvidiousFallbackSetting();
+    syncInvidiousWeightsSetting();
 }
 
 function removeInvidiousFallbackRow(button) {
@@ -1410,6 +1449,7 @@ function removeInvidiousFallbackRow(button) {
         editor.innerHTML = '<div class="invidious-instance-empty">暂无备用实例，点击下方按钮添加自部署实例</div>';
     }
     syncInvidiousFallbackSetting();
+    syncInvidiousWeightsSetting();
 }
 
 function syncInvidiousFallbackSetting() {
@@ -1422,8 +1462,25 @@ function syncInvidiousFallbackSetting() {
     hidden.value = JSON.stringify(urls);
 }
 
+function syncInvidiousWeightsSetting() {
+    const hidden = document.getElementById('invidious-instance-weights');
+    if (!hidden) return;
+    const weights = {};
+    const primaryUrl = document.getElementById('invidious-primary-url')?.value.trim().replace(/\/+$/, '');
+    const primaryWeight = document.getElementById('invidious-primary-weight')?.value;
+    if (primaryUrl) weights[primaryUrl] = Math.max(1, Number(primaryWeight) || 1);
+    const rows = document.querySelectorAll('.invidious-instance-row');
+    rows.forEach(row => {
+        const url = row.querySelector('.invidious-instance-row__input')?.value.trim().replace(/\/+$/, '');
+        const weight = row.querySelector('.invidious-instance-row__weight')?.value;
+        if (url) weights[url] = Math.max(0, Number(weight) || 0);
+    });
+    hidden.value = JSON.stringify(weights);
+}
+
 async function saveSettings() {
     syncInvidiousFallbackSetting();
+    syncInvidiousWeightsSetting();
     const settings = {};
     document.querySelectorAll('[data-setting]').forEach(el => {
         const key = el.dataset.setting;
@@ -1645,13 +1702,14 @@ async function loadInvidiousHealth() {
 
 async function checkInvidiousHealth() {
     const btn = document.getElementById('invidious-check-btn');
+    const videoIdInput = document.getElementById('invidious-video-id-input');
+    const videoId = videoIdInput ? videoIdInput.value.trim() : '';
     if (btn) {
         btn.disabled = true;
         btn.textContent = '检测中...';
     }
+    setInvidiousLoading(true);
     try {
-        const videoIdInput = document.getElementById('invidious-video-id-input');
-        const videoId = videoIdInput ? videoIdInput.value.trim() : '';
         const resp = await apiRequest('/api/diagnostics/invidious', {
             method: 'POST',
             body: JSON.stringify({ video_id: videoId }),
@@ -1661,10 +1719,25 @@ async function checkInvidiousHealth() {
     } catch (err) {
         // handled by apiRequest
     }
+    setInvidiousLoading(false);
     if (btn) {
         btn.disabled = false;
         btn.textContent = '🔎 立即检测';
     }
+}
+
+function setInvidiousLoading(loading) {
+    const placeholders = ['invidious-instance-list', 'invidious-video-probe-list'];
+    placeholders.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (loading) {
+            el.dataset.loading = '1';
+            el.innerHTML = '<div class="diagnostics-empty">正在检测，请稍候...</div>';
+        } else {
+            delete el.dataset.loading;
+        }
+    });
 }
 
 function renderInvidiousHealth(data) {
@@ -1689,8 +1762,8 @@ function renderInvidiousHealth(data) {
     if (checkedAt) checkedAt.textContent = data.checked_at ? `最近检测：${data.checked_at}` : '等待首次健康检测';
     if (activeUrl) activeUrl.textContent = data.active_url || '-';
     if (timeout) timeout.textContent = `超时配置：${data.timeout || '-'} 秒`;
-    if (lbRatio) lbRatio.textContent = loadBalance.ratio_text || '7:3';
-    if (lbDetail) lbDetail.textContent = `${loadBalance.description || '主实例约 70%，备用实例整体约 30%'} · 可用 ${loadBalance.available_count ?? 0}/${loadBalance.total_count ?? 0}`;
+    if (lbRatio) lbRatio.textContent = loadBalance.ratio_text || '-';
+    if (lbDetail) lbDetail.textContent = `${loadBalance.description || '各实例按权重轮询'} · 可用 ${loadBalance.available_count ?? 0}/${loadBalance.total_count ?? 0}`;
 
     renderInvidiousInstances(data.instances || []);
     renderInvidiousVideoProbe(data.video_probe || {});
@@ -1711,7 +1784,7 @@ function renderInvidiousInstances(instances) {
                 <div>
                     <div class="diagnostics-instance__url">${escapeHtml(item.url || '-')}</div>
                     <div class="diagnostics-instance__meta">
-                        ${escapeHtml(item.role_text || (index === 0 ? '主实例' : '备用实例'))} · 权重 ${item.weight ?? '-'} · HTTP ${item.status_code || '-'} · ${item.latency_ms ?? '-'} ms
+                        ${escapeHtml(item.role_text || (index === 0 ? '主实例' : '备用实例'))} · 权重 ${escapeHtml(item.weight ?? '-')} · HTTP ${escapeHtml(item.status_code || '-')} · ${escapeHtml(item.latency_ms ?? '-')} ms
                     </div>
                 </div>
             </div>
@@ -1742,11 +1815,11 @@ function renderInvidiousVideoProbe(probe) {
         </div>
         <div class="diagnostics-probe__row">
             <span>HTTP 状态</span>
-            <strong>${probe.status_code || '-'}</strong>
+            <strong>${escapeHtml(probe.status_code || '-')}</strong>
         </div>
         <div class="diagnostics-probe__row">
             <span>响应耗时</span>
-            <strong>${probe.latency_ms ?? '-'} ms</strong>
+            <strong>${escapeHtml(probe.latency_ms ?? '-')} ms</strong>
         </div>
         <div class="diagnostics-probe__row">
             <span>视频标题</span>
@@ -1773,7 +1846,7 @@ function renderInvidiousVideoProbes(probes) {
                 <div>
                     <div class="diagnostics-instance__url">${escapeHtml(item.url || '-')}</div>
                     <div class="diagnostics-instance__meta">
-                        ${escapeHtml(item.role_text || '实例')} · 视频 ID ${escapeHtml(item.video_id || '-')} · HTTP ${item.status_code || '-'} · ${item.latency_ms ?? '-'} ms
+                        ${escapeHtml(item.role_text || '实例')} · 视频 ID ${escapeHtml(item.video_id || '-')} · HTTP ${escapeHtml(item.status_code || '-')} · ${escapeHtml(item.latency_ms ?? '-')} ms
                     </div>
                 </div>
             </div>

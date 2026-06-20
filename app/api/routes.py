@@ -10,7 +10,10 @@ from app.core.tmdb_client import get_tmdb_client
 from app.core.source_finder import find_sources_for_episode
 from app.core.sync_queue import sync_queue
 from app.core.source_health import check_episode_sources_health
-from app.core.invidious_health import check_invidious_health, get_last_invidious_health
+from app.core.invidious_health import (
+    check_invidious_health, get_last_invidious_health,
+    is_valid_video_id, DEFAULT_VIDEO_ID,
+)
 from app.core.link_converter import invidious_to_youtube, format_duration, format_view_count
 from app.core.response import success_response, error_response
 
@@ -62,7 +65,10 @@ def invidious_diagnostics():
     """Invidious 健康诊断"""
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
-        video_id = data.get('video_id') or 'dQw4w9WgXcQ'
+        video_id = (data.get('video_id') or DEFAULT_VIDEO_ID).strip()
+        # 校验视频 ID 合法字符集，防止路径游走与注入
+        if not is_valid_video_id(video_id):
+            return error_response("视频 ID 格式非法，仅允许字母、数字、_、-（6-20 位）", code="INVALID_VIDEO_ID")
         result = check_invidious_health(video_id=video_id)
         return success_response(result, message="Invidious 健康检测完成")
     return success_response(get_last_invidious_health(), message="获取 Invidious 最近健康状态成功")
@@ -436,7 +442,7 @@ def get_settings():
 _SETTINGS_WHITELIST = frozenset({
     "auto_sync_enabled", "auto_sync_interval",
     "match_threshold", "match_recommend_threshold",
-    "invidious_url", "invidious_fallback_urls",
+    "invidious_url", "invidious_fallback_urls", "invidious_instance_weights",
     "tg_bot_token", "tg_chat_id",
     "tg_notify_enabled", "tg_backup_enabled", "tg_backup_interval_days",
     "episode_sort_order",
@@ -475,7 +481,7 @@ def update_settings():
             logger.error(f"更新 TG 备份计划失败: {e}")
 
     # 如果更新了 Invidious 设置，重置客户端以便立即加载新实例配置
-    if 'invidious_url' in data or 'invidious_fallback_urls' in data:
+    if 'invidious_url' in data or 'invidious_fallback_urls' in data or 'invidious_instance_weights' in data:
         from app.core.invidious_client import reset_invidious_client
         reset_invidious_client()
 

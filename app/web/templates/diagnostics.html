@@ -21,15 +21,15 @@
     </section>
 
     <section class="diagnostics-card">
-        <div class="diagnostics-card__label">当前活跃实例</div>
+        <div class="diagnostics-card__label">探针目标实例</div>
         <div class="diagnostics-card__value diagnostics-card__value--url" id="invidious-active-url">-</div>
-        <div class="diagnostics-card__hint">优先使用可连通实例执行视频详情链路检测</div>
+        <div class="diagnostics-card__hint">视频详情探测选用的实例（主实例优先）；并非客户端实际分发流量的实例</div>
     </section>
 
     <section class="diagnostics-card">
         <div class="diagnostics-card__label">负载均衡</div>
-        <div class="diagnostics-card__value" id="invidious-lb-ratio">7:3</div>
-        <div class="diagnostics-card__hint" id="invidious-lb-detail">主实例 70%，备用实例整体 30%</div>
+        <div class="diagnostics-card__value" id="invidious-lb-ratio">-</div>
+        <div class="diagnostics-card__hint" id="invidious-lb-detail">各实例按权重轮询</div>
     </section>
 
     <section class="diagnostics-card">
