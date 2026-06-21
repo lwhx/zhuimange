@@ -1,0 +1,16 @@
+# 构建产物
+/zhuimange
+/zhuimange.exe
+/zhuimange-linux
+/zhuimange-windows.exe
+
+# 测试数据
+/data/
+
+# 依赖
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
