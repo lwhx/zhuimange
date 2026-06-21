@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="{{.Theme}}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} - {{end}}追漫阁</title>
+    <link rel="stylesheet" href="/static/app.css?v=1">
+    <!-- 内联主题初始化，避免 FOUC（闪烁） -->
+    <script>
+        (function() {
+            var saved = localStorage.getItem('zmg-theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="navbar__brand">📚 <span>追漫阁</span></a>
+        <div class="navbar__links">
+            <a href="/" class="navbar__link">首页</a>
+            <a href="/stats" class="navbar__link">统计</a>
+            <a href="/diagnostics" class="navbar__link">诊断</a>
+            <a href="/settings" class="navbar__link">设置</a>
+            <button class="navbar__theme-btn" onclick="toggleTheme()" title="切换主题">🎨</button>
+            <a href="/logout" class="navbar__link navbar__link--muted">退出</a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {{template "content" .}}
+    </main>
+
+    <!-- Toast 容器 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- 视频源模态容器 -->
+    <div id="sources-modal-overlay" class="modal-overlay" style="display:none;"></div>
+
+    <script src="/static/htmx.min.js"></script>
+    <script defer src="/static/alpine.min.js"></script>
+    <script src="/static/app.js?v=1"></script>
+
+    <!-- 页面专属脚本 -->
+    {{block "scripts" .}}{{end}}
+</body>
+</html>

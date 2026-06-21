@@ -1,0 +1,268 @@
+/* 追漫阁 Go 版样式 - 主题变量 + 核心组件 */
+/* 主题：midnight(默认深色) / ocean / forest / sunset / nord / light */
+
+:root,
+[data-theme="midnight"] {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-input: #0f172a;
+    --text-primary: #e2e8f0;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border-color: #334155;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --transition-normal: 0.2s ease;
+    --font-sans: 'Inter', -apple-system, 'Noto Sans SC', sans-serif;
+}
+
+[data-theme="ocean"] {
+    --bg-primary: #0c1844;
+    --bg-secondary: #122a6b;
+    --bg-tertiary: #1e3a8a;
+    --bg-input: #0c1844;
+    --text-primary: #dbeafe;
+    --border-color: #1e40af;
+    --accent: #60a5fa;
+    --accent-hover: #3b82f6;
+}
+
+[data-theme="forest"] {
+    --bg-primary: #0d1f17;
+    --bg-secondary: #16331f;
+    --bg-tertiary: #1f4d2e;
+    --bg-input: #0d1f17;
+    --text-primary: #d1fae5;
+    --border-color: #1f4d2e;
+    --accent: #34d399;
+    --accent-hover: #10b981;
+}
+
+[data-theme="sunset"] {
+    --bg-primary: #1a0a1a;
+    --bg-secondary: #2d1320;
+    --bg-tertiary: #4a1d30;
+    --bg-input: #1a0a1a;
+    --text-primary: #fce7f3;
+    --border-color: #4a1d30;
+    --accent: #f472b6;
+    --accent-hover: #ec4899;
+}
+
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e2e8f0;
+    --bg-input: #ffffff;
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --border-color: #cbd5e1;
+    --accent: #3b82f6;
+}
+
+/* Reset */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    transition: background var(--transition-normal);
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+img { max-width: 100%; display: block; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea, select {
+    font-family: inherit; font-size: 0.95rem;
+    background: var(--bg-input); border: 1px solid var(--border-color);
+    color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm);
+}
+input:focus { outline: none; border-color: var(--accent); }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+/* 导航栏 */
+.navbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px; background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100;
+}
+.navbar__brand { font-size: 1.2rem; font-weight: 700; color: var(--text-primary); }
+.navbar__brand span { color: var(--accent); }
+.navbar__links { display: flex; align-items: center; gap: 8px; }
+.navbar__link {
+    padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.9rem;
+    color: var(--text-secondary); transition: all var(--transition-normal);
+}
+.navbar__link:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.navbar__link--muted { color: var(--text-muted); }
+.navbar__theme-btn {
+    padding: 6px 10px; border-radius: var(--radius-sm); font-size: 1.1rem;
+    transition: background var(--transition-normal);
+}
+.navbar__theme-btn:hover { background: var(--bg-tertiary); }
+
+/* 主内容 */
+.main-content { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* 页面标题 */
+.page-header { margin-bottom: 24px; }
+.page-header__title { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+.page-header__subtitle { color: var(--text-muted); font-size: 0.9rem; }
+
+/* 搜索框 */
+.search-box { position: relative; margin-bottom: 24px; }
+.search-box__wrap { position: relative; }
+.search-box__input {
+    width: 100%; padding: 12px 16px 12px 44px; font-size: 1rem;
+}
+.search-box__icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+.search-results {
+    position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+    border-radius: var(--radius-md); max-height: 400px; overflow-y: auto; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3); display: none;
+}
+.search-results.visible { display: block; }
+.search-result-item {
+    display: flex; gap: 12px; padding: 12px; cursor: pointer;
+    border-bottom: 1px solid var(--border-color); transition: background var(--transition-normal);
+}
+.search-result-item:hover { background: var(--bg-tertiary); }
+.search-result-item:last-child { border-bottom: none; }
+.search-result-item__poster { width: 40px; height: 56px; border-radius: 4px; object-fit: cover; background: var(--bg-tertiary); }
+.search-result-item__info { flex: 1; min-width: 0; }
+.search-result-item__title { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+.search-result-item__meta { font-size: 0.8rem; color: var(--text-muted); }
+.search-result-item__add-btn {
+    align-self: center; padding: 4px 12px; background: var(--accent); color: white;
+    border-radius: var(--radius-sm); font-size: 0.85rem; transition: background var(--transition-normal);
+}
+.search-result-item__add-btn:hover { background: var(--accent-hover); }
+
+/* 动漫卡片网格 */
+.anime-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+}
+.anime-card {
+    background: var(--bg-secondary); border-radius: var(--radius-md); overflow: hidden;
+    transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+    border: 1px solid var(--border-color);
+}
+.anime-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.anime-card__poster-wrap { position: relative; aspect-ratio: 2/3; background: var(--bg-tertiary); overflow: hidden; }
+.anime-card__poster { width: 100%; height: 100%; object-fit: cover; transition: transform var(--transition-normal); }
+.anime-card:hover .anime-card__poster { transform: scale(1.05); }
+.anime-card__badge {
+    position: absolute; top: 8px; right: 8px; background: var(--accent); color: white;
+    padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+}
+.anime-card__body { padding: 12px; }
+.anime-card__title {
+    font-weight: 600; font-size: 0.9rem; margin-bottom: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.anime-card__progress {
+    height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; margin-top: 8px;
+}
+.anime-card__progress-fill { height: 100%; background: var(--accent); transition: width var(--transition-normal); }
+.anime-card__meta { font-size: 0.75rem; color: var(--text-muted); }
+
+/* 详情页 */
+.anime-detail { display: grid; grid-template-columns: 280px 1fr; gap: 32px; margin-bottom: 32px; }
+.anime-detail__poster { width: 100%; border-radius: var(--radius-md); }
+.anime-detail__headline { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.anime-detail__title { font-size: 1.6rem; font-weight: 700; }
+.anime-detail__meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px; }
+.anime-detail__overview { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.7; }
+.anime-detail__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+/* 按钮 */
+.btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 500;
+    transition: all var(--transition-normal); border: 1px solid transparent;
+}
+.btn--primary { background: var(--accent); color: white; }
+.btn--primary:hover { background: var(--accent-hover); }
+.btn--secondary { background: var(--bg-tertiary); color: var(--text-primary); }
+.btn--secondary:hover { background: var(--border-color); }
+.btn--danger { background: var(--danger); color: white; }
+.btn--sm { padding: 6px 12px; font-size: 0.85rem; }
+
+/* 集数列表 */
+.episodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; }
+.episode-item {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem; font-weight: 600;
+    transition: all var(--transition-normal); position: relative;
+}
+.episode-item:hover { background: var(--bg-tertiary); transform: scale(1.05); }
+.episode-item--watched { background: var(--success); color: white; border-color: var(--success); }
+.episode-item--has-sources::after {
+    content: '🎬'; position: absolute; top: 2px; right: 2px; font-size: 0.6rem;
+}
+
+/* Toast */
+.toast-container {
+    position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+    padding: 12px 20px; border-radius: var(--radius-sm); color: white;
+    font-size: 0.9rem; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    animation: slideIn 0.3s ease;
+}
+.toast--success { background: var(--success); }
+.toast--error { background: var(--danger); }
+.toast--info { background: var(--accent); }
+.toast--warning { background: var(--warning); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* 模态框 */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+}
+.modal {
+    background: var(--bg-secondary); border-radius: var(--radius-md);
+    max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+.modal__header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border-color); }
+.modal__title { font-weight: 600; }
+.modal__close { font-size: 1.3rem; color: var(--text-muted); }
+
+/* 空状态 */
+.empty-state { text-align: center; padding: 48px 24px; color: var(--text-muted); }
+.empty-state__icon { font-size: 3rem; margin-bottom: 12px; }
+.empty-state__title { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); }
+
+/* 骨架屏 */
+.skeleton { background: var(--bg-tertiary); border-radius: var(--radius-sm); animation: shimmer 1.5s infinite; }
+@keyframes shimmer { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .navbar { padding: 10px 16px; }
+    .navbar__brand span { display: none; }
+    .navbar__links { gap: 4px; }
+    .navbar__link { padding: 6px 8px; font-size: 0.85rem; }
+    .main-content { padding: 16px; }
+    .anime-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .anime-detail { grid-template-columns: 1fr; gap: 16px; }
+    .anime-detail__poster { max-width: 200px; margin: 0 auto; }
+}

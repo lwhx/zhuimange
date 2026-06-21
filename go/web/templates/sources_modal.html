@@ -1,0 +1,31 @@
+<div class="modal">
+    <div class="modal__header">
+        <div class="modal__title">🎬 第 {{.EpNum}} 集视频源</div>
+        <button class="modal__close" onclick="closeModal()">✕</button>
+    </div>
+    <div style="padding:16px 24px;">
+        {{if .Sources}}
+        <div style="display:flex;flex-direction:column;gap:12px;">
+            {{range .Sources}}
+            <a href="{{youtubeURL .VideoID}}" target="_blank" rel="noopener"
+               style="display:flex;gap:12px;padding:12px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border-color);transition:border-color 0.2s;">
+                <img src="{{proxyImg (thumbURL .VideoID) $.IsHTTPS}}" alt="" style="width:120px;height:67px;object-fit:cover;border-radius:4px;background:var(--bg-tertiary);" loading="lazy">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.9rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{.Title}}</div>
+                    <div style="font-size:0.8rem;color:var(--text-muted);">
+                        {{.ChannelName}} · {{formatDuration .Duration}} · {{formatViews .ViewCount}}
+                    </div>
+                    <div style="font-size:0.75rem;color:var(--accent);margin-top:4px;">匹配分 {{printf "%.1f" .MatchScore}}</div>
+                </div>
+            </a>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="empty-state">
+            <div class="empty-state__icon">🔍</div>
+            <div class="empty-state__title">暂无视频源</div>
+            <p>该集尚未同步，同步引擎在阶段 3 实现后可搜索</p>
+        </div>
+        {{end}}
+    </div>
+</div>

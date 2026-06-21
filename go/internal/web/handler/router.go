@@ -1,6 +1,4 @@
 // Package handler 实现 HTTP 路由处理器。
-//
-// 阶段 1 只实现登录/登出与认证守卫，后续阶段逐步补充其他页面与 API。
 package handler
 
 import (
@@ -14,6 +12,8 @@ import (
 	"github.com/lwhx/zhuimange/internal/auth"
 	"github.com/lwhx/zhuimange/internal/config"
 	"github.com/lwhx/zhuimange/internal/store"
+	"github.com/lwhx/zhuimange/internal/tmdb"
+	tmplpkg "github.com/lwhx/zhuimange/internal/web/template"
 	"github.com/lwhx/zhuimange/internal/web/middleware"
 )
 
@@ -22,11 +22,30 @@ type AppHandlers struct {
 	store  *store.Store
 	auth   *auth.Authenticator
 	config *config.Config
+	tmdb   *tmdb.Client
 }
+
+// globalTmplMgr 全局模板管理器（在 NewRouter 时初始化）。
+var globalTmplMgr *tmplpkg.Manager
 
 // NewRouter 创建并配置 HTTP 路由树。
 func NewRouter(st *store.Store, a *auth.Authenticator, limiter *middleware.RateLimiter, cfg *config.Config) http.Handler {
-	h := &AppHandlers{store: st, auth: a, config: cfg}
+	// 初始化模板管理器
+	tmplDir := resolveTemplateDir()
+	if tmplDir != "" {
+		mgr, err := tmplpkg.New(tmplDir)
+		if err != nil {
+			panic("初始化模板管理器失败: " + err.Error())
+		}
+		globalTmplMgr = mgr
+	}
+
+	h := &AppHandlers{
+		store:  st,
+		auth:   a,
+		config: cfg,
+		tmdb:   tmdb.New(cfg),
+	}
 	r := chi.NewRouter()
 
 	// 全局中间件（必须在注册任何路由之前 Use）
@@ -34,9 +53,7 @@ func NewRouter(st *store.Store, a *auth.Authenticator, limiter *middleware.RateL
 	r.Use(chimw.RealIP)
 	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.RateLimitMiddleware(limiter))
-	// CSRF 保护（登录提交等写操作需要）
 	r.Use(auth.CSRFMiddleware)
-	// 认证守卫：豁免登录/静态/健康检查
 	r.Use(middleware.AuthMiddleware(a, []string{"/static/", "/health", "/ready", "/api/health", "/api/proxy_image"}))
 
 	// 公开路由
@@ -44,11 +61,22 @@ func NewRouter(st *store.Store, a *auth.Authenticator, limiter *middleware.RateL
 	r.Post("/login", h.loginSubmit)
 	r.Get("/logout", h.logout)
 
-	// 受保护路由（需登录）
+	// API 路由
+	r.Get("/api/search", h.searchAnime)
+	r.Post("/api/anime/add", h.addAnime)
+	r.Post("/api/anime/add_manual", h.addAnimeManual)
+	r.Post("/api/anime/{id}/episode/{ep}/watch", h.markWatched)
+	r.Post("/api/anime/{id}/episode/{ep}/unwatch", h.markUnwatched)
+	r.Put("/api/anime/{id}/progress", h.updateProgress)
+	r.Get("/api/proxy_image", h.proxyImage)
+
+	// 页面路由
 	r.Get("/", h.index)
+	r.Get("/anime/{id}", h.animeDetail)
+	r.Get("/anime/{id}/episode/{ep}/sources", h.episodeSources)
 	r.Get("/health", h.health)
 
-	// 静态文件服务（CSS/JS/字体）—— 认证中间件已豁免 /static/ 前缀
+	// 静态文件
 	staticDir := resolveStaticDir()
 	if staticDir != "" {
 		fs := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
@@ -58,13 +86,25 @@ func NewRouter(st *store.Store, a *auth.Authenticator, limiter *middleware.RateL
 	return r
 }
 
-// resolveStaticDir 解析静态资源目录（兼容 go run 开发模式与编译后运行）。
+// resolveTemplateDir 解析模板目录。
+func resolveTemplateDir() string {
+	if _, err := os.Stat("web/templates"); err == nil {
+		return "web/templates"
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, "web", "templates")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// resolveStaticDir 解析静态资源目录。
 func resolveStaticDir() string {
-	// 开发模式：go/ 目录下的 web/static
 	if _, err := os.Stat("web/static"); err == nil {
 		return "web/static"
 	}
-	// 编译后：二进制同级 web/static
 	if cwd, err := os.Getwd(); err == nil {
 		candidate := filepath.Join(cwd, "web", "static")
 		if _, err := os.Stat(candidate); err == nil {

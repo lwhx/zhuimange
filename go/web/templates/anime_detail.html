@@ -1,0 +1,54 @@
+{{define "content"}}
+{{with .Data.Anime}}
+<div class="anime-detail">
+    <div>
+        {{if .PosterURL}}
+        <img class="anime-detail__poster" src="{{proxyImg .PosterURL $.Data.IsHTTPS}}" alt="{{.TitleCN}}">
+        {{else}}
+        <div style="aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;background:var(--bg-tertiary);border-radius:var(--radius-md);font-size:4rem;opacity:0.3;">🎬</div>
+        {{end}}
+    </div>
+    <div>
+        <div class="anime-detail__headline">
+            <div>
+                <h1 class="anime-detail__title">{{.TitleCN}}</h1>
+                {{if .TitleEN}}<p style="color:var(--text-muted);font-size:0.9rem;">{{.TitleEN}}</p>{{end}}
+            </div>
+        </div>
+        <div class="anime-detail__meta">
+            {{if .AirDate}}首播 {{.AirDate}} · {{end}}
+            {{$.Data.EpisodeCount}} 集 · 已看 {{.WatchedEp}} 集
+            {{if .Status}} · {{.Status}}{{end}}
+        </div>
+        {{if .Overview}}
+        <p class="anime-detail__overview">{{.Overview}}</p>
+        {{end}}
+        <div class="anime-detail__actions">
+            <span class="badge badge--info">视频源 {{$.Data.SourceCount}}</span>
+        </div>
+    </div>
+</div>
+
+<!-- 集数列表 -->
+<div class="page-header">
+    <h2 class="page-header__title">📺 集数</h2>
+</div>
+{{if $.Data.Episodes}}
+<div class="episodes-grid">
+    {{range $.Data.Episodes}}
+    <div class="episode-item {{if .Watched}}episode-item--watched{{end}}"
+         onclick="markWatched({{$.Data.Anime.ID}}, {{.AbsoluteNum}})"
+         title="第 {{.AbsoluteNum}} 集{{if .Title}} - {{.Title}}{{end}}{{if .AirDate}} ({{.AirDate}}){{end}}">
+        {{.AbsoluteNum}}
+    </div>
+    {{end}}
+</div>
+{{else}}
+<div class="empty-state">
+    <div class="empty-state__icon">📭</div>
+    <div class="empty-state__title">暂无集数数据</div>
+    <p>同步引擎将在阶段 3 实现后自动获取集数</p>
+</div>
+{{end}}
+{{end}}
+{{end}}
