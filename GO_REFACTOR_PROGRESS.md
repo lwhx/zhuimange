@@ -4,7 +4,13 @@
 >
 > **当前分支**：`go-refactor`（Python 版在 `main` 分支，`app/` 目录保持不动）
 > **Go 代码位置**：`go/` 子目录
-> **最后更新**：阶段 2 完成后（commit `910b8b5`）
+> **最后更新**：阶段 3 大部分 + 阶段 4 已完成（代码核实，文档已同步）
+
+---
+
+## ⚠️ 文档校准说明（2026-06 更新）
+
+此前文档仅记录到阶段 2，实际代码已推进到**阶段 3 大部分 + 阶段 4 全部**。本次校准依据代码实际存在性（非自述）。继续开发前请以本节为准。
 
 ---
 
@@ -61,13 +67,40 @@ GOOS=linux GOARCH=amd64 go build -o zhuimange-linux -ldflags="-s -w" ./cmd/zhuim
 |------|------|------|--------|
 | **1** | 地基（配置/数据库/认证/中间件） | ✅ 完成 | 2068 行 |
 | **2** | 核心展示（TMDB/列表/详情/视频源/前端） | ✅ 完成 | 2061 行 |
-| **3** | 同步引擎（Invidious/评分器/队列/SSE） | ⬜ 待开发 | — |
-| **4** | 调度/通知/健康 | ⬜ 待开发 | — |
+| **3** | 同步引擎（Invidious/评分器/队列/SSE） | 🔶 大部分完成（缺 3.4 同步服务、3.5 队列+SSE） | 已写 1766 行 |
+| **4** | 调度/通知/健康 | ✅ 完成（scheduler/health/notify 齐全） | 334 行 |
 | **5** | 备份/导入导出 + 互通 | ⬜ 待开发 | — |
 | **6** | 体验增强（日历/看板/播放/智能提醒） | ⬜ 待开发 | — |
 | **7** | 部署/打磨/文档 | ⬜ 待开发 | — |
 
-**累计**：4129 行 Go 代码，20 个 .go 文件。
+**累计**：约 6200 行 Go 代码（阶段1-4），20 个 .go 文件。
+
+### 阶段 3 子任务细化（代码核实）
+
+| 子任务 | 模块 | 状态 | 备注 |
+|--------|------|------|------|
+| 3.1 Invidious 客户端 | `internal/invidious/client.go` | ✅ 526 行 | 加权轮询/故障切换/重试/独立权重 |
+| 3.2 评分器 | `internal/matcher/{filter,fuzzy,preprocessor,scorer}.go` | ✅ 552 行 | 4 文件，置信分层+多维排序 |
+| 3.3 视频源发现 | `internal/source/finder.go` | ✅ 354 行 | 缓存/并发搜索/规则过滤 |
+| 3.4 同步服务 | `internal/sync/` | ❌ **未创建** | run_anime_sync 主流程待写 |
+| 3.5 同步队列+SSE | `internal/sync/` + `internal/web/sse/` | ❌ **未创建** | 任务持久化+流式推送待写 |
+
+### 阶段 4 子任务细化（代码核实）
+
+| 子任务 | 模块 | 状态 | 导出函数 |
+|--------|------|------|---------|
+| 调度器 | `internal/scheduler/scheduler.go` | ✅ 116 行 | New/Start/Stop/CheckAndSync |
+| 健康诊断 | `internal/health/checker.go` | ✅ 119 行 | NewChecker/CheckInvidious/CheckSourceHealth/CheckSourcesBatch |
+| Telegram 通知 | `internal/notify/telegram.go` | ✅ 99 行 | NewTelegram/SendMessage/SendNewEpisodeNotification/SendAlert |
+
+---
+
+## 下一步开发优先级
+
+1. **阶段 3.4 同步服务** `internal/sync/service.go`——把 invidious/matcher/source 串成完整同步流程
+2. **阶段 3.5 同步队列 + SSE**——任务持久化 + 流式进度推送，闭合"点同步→实时进度→入库"
+3. 阶段 3 完成后做一次端到端冒烟（编译→运行→点同步→看进度）
+4. 阶段 5-7 按计划推进
 
 ---
 
@@ -142,6 +175,45 @@ go/web/
 - 认证：`GET|POST /login`、`GET /logout`
 
 **验证通过**：登录闭环、手动添加动漫、首页卡片、详情页集数、标记已看、进度更新、视频源模态、图片代理(SSRF拦截)。
+
+---
+
+### ✅ 阶段 3（部分）：同步引擎（commit 未单独标记）
+
+> 阶段 3 的客户端/评分器/源发现已写完，但**同步服务主流程（3.4）和队列/SSE（3.5）尚未创建**，因此端到端同步闭环还未打通。
+
+**已实现文件**：
+```
+go/internal/
+├── invidious/client.go              # 加权轮询 + 故障切换 + 重试 + 每实例独立权重（526 行）
+├── matcher/
+│   ├── preprocessor.go              # 文本归一化 + 同音字 + 集数/季数提取
+│   ├── fuzzy.go                     # 6 种模糊匹配取 max
+│   ├── filter.go                    # 合集/非正片过滤
+│   └── scorer.go                    # 置信分层 S/A/B/C + 多维 tie-breaker
+└── source/finder.go                 # 缓存/并发搜索/规则过滤/评分入库（354 行）
+```
+
+**尚未创建**（阶段 3 收尾必需）：
+```
+go/internal/sync/service.go          # run_anime_sync 主流程（参考 app/core/sync_service.py）
+go/internal/sync/queue.go            # 任务队列 + DB 持久化（参考 app/core/sync_queue.py）
+go/internal/web/sse/                 # SSE 流式推送
+```
+
+---
+
+### ✅ 阶段 4：调度/通知/健康
+
+**已实现文件**：
+```
+go/internal/
+├── scheduler/scheduler.go           # cron 定时同步（New/Start/Stop/CheckAndSync，116 行）
+├── health/checker.go                # Invidious + 源健康（NewChecker/CheckInvidious/CheckSourceHealth/CheckSourcesBatch，119 行）
+└── notify/telegram.go               # TG 推送（SendMessage/SendNewEpisodeNotification/SendAlert，99 行）
+```
+
+**待接线**：这些模块已写好但可能尚未在 router/main 中注册路由（诊断页 `/diagnostics`、统计页 `/stats` 需在阶段 5 设置页一起接入）。
 
 ---
 
