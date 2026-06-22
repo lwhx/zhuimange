@@ -146,7 +146,7 @@ func generateRandomPassword() string {
 }
 
 // initPasswordIfNeeded 仅在 auth_password 未设置（首次启动）时初始化密码。
-// 对齐 Python _init_default_password：生成随机密码并写入 data/.initial_password 兜底文件，
+// 优先使用环境变量 INITIAL_PASSWORD（可在 .env 中填写）；未设置则生成随机密码。
 // 已有密码绝不覆盖（避免重启覆盖用户修改过的密码）。
 func initPasswordIfNeeded(ctx context.Context, st *store.Store, baseDir string) error {
 	stored, _ := st.GetSetting(ctx, "auth_password", "")
@@ -154,8 +154,22 @@ func initPasswordIfNeeded(ctx context.Context, st *store.Store, baseDir string) 
 		return nil // 已有密码，跳过
 	}
 
-	// 首次启动：生成随机密码（对齐 Python secrets.token_urlsafe(12)）
-	password := generateRandomPassword()
+	// 优先用 .env / 环境变量里的 INITIAL_PASSWORD
+	password := strings.TrimSpace(os.Getenv("INITIAL_PASSWORD"))
+	if password != "" {
+		hash, err := auth.HashPassword(password)
+		if err != nil {
+			return err
+		}
+		if err := st.SetSetting(ctx, "auth_password", hash); err != nil {
+			return err
+		}
+		slog.Info("已使用 INITIAL_PASSWORD 环境变量设置初始密码")
+		return nil
+	}
+
+	// 未配置则生成随机密码（对齐 Python secrets.token_urlsafe(12)）
+	password = generateRandomPassword()
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return err
@@ -164,7 +178,7 @@ func initPasswordIfNeeded(ctx context.Context, st *store.Store, baseDir string) 
 		return err
 	}
 
-	slog.Warn("已生成随机初始密码，请立即登录并在设置中修改！此密码仅显示一次", "password", password)
+	slog.Warn("未配置 INITIAL_PASSWORD，已生成随机初始密码（可在 .env 设置 INITIAL_PASSWORD 预置密码），请立即登录并在设置中修改！此密码仅显示一次", "password", password)
 
 	// 兜底留存：写入 data/.initial_password（仅属主可读）
 	secretFile := filepath.Join(baseDir, "data", ".initial_password")
