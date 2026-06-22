@@ -125,17 +125,19 @@ docker compose up -d
 
 ### 方式二：单二进制部署
 
-从 [Releases](https://github.com/lwhx/zhuimange/releases) 下载对应平台的二进制文件，或自行交叉编译：
+从 [Releases](https://github.com/lwhx/zhuimange/releases) 下载对应平台的预编译二进制（打 tag 后自动构建，支持 linux/amd64、linux/arm64、windows/amd64、darwin/amd64、darwin/arm64），或自行交叉编译：
 
 ```bash
 cd go
-# Linux amd64
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o zhuimange ./cmd/zhuimange
+# 交叉编译 Linux amd64（其他平台同理：make build-linux-arm64 / build-windows / build-darwin / build-darwin-arm64）
+make build-linux
 
 # 上传到服务器后
-scp zhuimange user@server:/opt/zhuimange/
-ssh user@server "cd /opt/zhuimange && ./zhuimange"
+scp dist/zhuimange-linux-amd64 user@server:/opt/zhuimange/zhuimange
+ssh user@server "chmod +x /opt/zhuimange/zhuimange && /opt/zhuimange/zhuimange"
 ```
+
+验证版本：`./zhuimange --version`
 
 配合 systemd 实现开机自启（模板见 `go/zhuimange.service`）：
 

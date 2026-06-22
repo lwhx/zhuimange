@@ -4,13 +4,18 @@
 GO        = go
 BINARY    = zhuimange
 MAIN_PKG  = ./cmd/zhuimange
+VERSION  ?= dev
+# CGO_ENABLED=0：modernc.org/sqlite 是纯 Go，可纯静态交叉编译
+# -s -w：去除调试符号和 DWARF，减小体积
+# -X main.version=$(VERSION)：注入版本号（可用 make VERSION=1.0.0）
+LDFLAGS   = -s -w -X main.version=$(VERSION)
 
-.PHONY: all build run tidy test vet fmt clean migrate-linux migrate-windows help
+.PHONY: all build run tidy test vet fmt clean build-linux build-linux-arm64 build-windows build-darwin build-darwin-arm64 release help
 
 ## all: 默认目标，编译当前平台二进制
 all: build
 
-## build: 编译当前平台二进制
+## build: 编译当前平台二进制（开发用，含调试符号）
 build:
 	$(GO) build -o $(BINARY) $(MAIN_PKG)
 
@@ -36,15 +41,38 @@ fmt:
 
 ## clean: 清理构建产物
 clean:
-	rm -f $(BINARY) $(BINARY)-linux $(BINARY)-windows.exe
+	rm -rf $(BINARY) $(BINARY)-* dist/
 
-## migrate-linux: 交叉编译 Linux 二进制（服务器部署用）
-migrate-linux:
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY)-linux -ldflags="-s -w" $(MAIN_PKG)
+## build-linux: 交叉编译 Linux amd64 二进制（服务器部署用）
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+	  $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY)-linux-amd64 $(MAIN_PKG)
 
-## migrate-windows: 交叉编译 Windows 二进制
-migrate-windows:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY)-windows.exe -ldflags="-s -w" $(MAIN_PKG)
+## build-linux-arm64: 交叉编译 Linux arm64 二进制（树莓派/ARM 服务器）
+build-linux-arm64:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+	  $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY)-linux-arm64 $(MAIN_PKG)
+
+## build-windows: 交叉编译 Windows amd64 二进制
+build-windows:
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+	  $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY)-windows-amd64.exe $(MAIN_PKG)
+
+## build-darwin: 交叉编译 macOS amd64 二进制
+build-darwin:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 \
+	  $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY)-darwin-amd64 $(MAIN_PKG)
+
+## build-darwin-arm64: 交叉编译 macOS arm64 二进制（Apple Silicon）
+build-darwin-arm64:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
+	  $(GO) build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY)-darwin-arm64 $(MAIN_PKG)
+
+## release: 本地打包所有平台二进制到 dist/（CI 用 GitHub Actions，此目标供本地测试）
+release: clean build-linux build-linux-arm64 build-windows build-darwin build-darwin-arm64
+	mkdir -p dist
+	mv $(BINARY)-* dist/
+	@cd dist && sha256sum * | tee SHA256SUMS.txt
 
 ## help: 显示帮助
 help:

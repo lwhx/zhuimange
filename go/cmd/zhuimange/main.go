@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,9 +33,20 @@ import (
 	"github.com/lwhx/zhuimange/internal/web/middleware"
 )
 
+// version 在 release 构建时由 -ldflags="-X main.version=..." 注入；
+// 默认 dev 标记本地编译版本。
+var version = "dev"
+
 func main() {
-	var portFlag = flag.Int("port", 0, "监听端口（覆盖环境变量 PORT）")
+	var (
+		portFlag    = flag.Int("port", 0, "监听端口（覆盖环境变量 PORT）")
+		versionFlag = flag.Bool("version", false, "打印版本号并退出")
+	)
 	flag.Parse()
+	if *versionFlag {
+		fmt.Println("zhuimange", version)
+		return
+	}
 
 	// baseDir 优先使用当前工作目录的上级（仓库根），再退回到可执行文件位置。
 	baseDir, _ := os.Getwd()
