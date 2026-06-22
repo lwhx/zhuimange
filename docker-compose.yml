@@ -2,9 +2,6 @@ services:
   zhuimange:
     image: ghcr.io/lwhx/zhuimange:latest
     container_name: zhuimange
-    build:
-      context: .
-      dockerfile: Dockerfile
     # 个人内网部署（仅 127.0.0.1:8280 暴露）为简化挂载卷权限管理，容器以 root 运行。
     # 公网暴露或多租户场景建议改回非 root（取消 user，配合 chown -R 1000:1000 ./data）。
     user: "0:0"
@@ -17,7 +14,9 @@ services:
       # 容器以 root 运行，可直接读写挂载卷，无需 chown
       - ./data:/app/data:rw
     env_file:
-      - .env
+      # .env 文件可选：有则加载（含 TMDB_API_KEY 等），无则用环境变量
+      - path: .env
+        required: false
     environment:
       - DATABASE_PATH=/app/data/tracker.db
       - TZ=Asia/Shanghai
@@ -37,8 +36,8 @@ services:
     memswap_limit: 256m
     cpu_shares: 512
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 10s
