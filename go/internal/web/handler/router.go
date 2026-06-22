@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -153,7 +154,9 @@ func NewRouter(st *store.Store, a *auth.Authenticator, limiter *middleware.RateL
 		fs := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
 		r.Handle("/static/*", staticCache(fs))
 	} else {
-		r.Handle("/static/*", staticCache(http.StripPrefix("/static/", http.FileServer(http.FS(webassets.Static)))))
+		// embed FS 路径含 "static/" 前缀，用 fs.Sub 剥离后 FileServer 可正确查找
+		staticSub, _ := fs.Sub(webassets.Static, "static")
+		r.Handle("/static/*", staticCache(http.StripPrefix("/static/", http.FileServer(http.FS(staticSub)))))
 	}
 
 	return r

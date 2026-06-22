@@ -32,8 +32,15 @@ func New(templateDir string) (*Manager, error) {
 }
 
 // NewFS 从嵌入文件系统创建模板管理器。
+// NewFS 从 embed FS 创建模板管理器。
+// embed FS 路径含 "templates/" 前缀（//go:embed templates/*.html），
+// 用 fs.Sub 剥离前缀，使后续 ReadFile("base.html") 能正确找到文件。
 func NewFS(fsys fs.FS) (*Manager, error) {
-	return newManager("", fsys)
+	sub, err := fs.Sub(fsys, "templates")
+	if err != nil {
+		return nil, fmt.Errorf("剥离 embed FS 前缀失败: %w", err)
+	}
+	return newManager("", sub)
 }
 
 // newManager 创建模板管理器。
