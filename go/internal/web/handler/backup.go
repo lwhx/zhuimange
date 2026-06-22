@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	"github.com/lwhx/zhuimange/internal/backup"
 )
 
 // backupExport GET /api/backup/export 导出 JSON 备份文件。
@@ -143,5 +141,3 @@ func (h *AppHandlers) backupStats(w http.ResponseWriter, r *http.Request) {
 	successResp(w, stats, "查询成功")
 }
 
-// 兼容 backup 包引用（未直接使用其导出类型，但保留以表明依赖）
-var _ = backup.ExportData{}

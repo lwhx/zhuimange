@@ -32,19 +32,6 @@ func (s *Store) UpdateSyncJob(ctx context.Context, taskID string, fields map[str
 	return err
 }
 
-// GetSyncJob 按 task_id 查询同步任务。
-func (s *Store) GetSyncJob(ctx context.Context, taskID string) (*model.SyncJob, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, task_id, anime_id, status, mode, sync_type, progress, message, created_at, finished_at
-		FROM sync_jobs WHERE task_id = ?`, taskID)
-	job := &model.SyncJob{}
-	err := row.Scan(&job.ID, &job.TaskID, &job.AnimeID, &job.Status, &job.Mode, &job.SyncType, &job.Progress, &job.Message, &job.CreatedAt, &job.FinishedAt)
-	if err != nil {
-		return nil, err
-	}
-	return job, nil
-}
-
 // DeleteSyncJobsBefore 删除 created_at 早于指定时间的同步任务记录。
 // 用于定时 GC，防止 sync_jobs 表无限增长。
 func (s *Store) DeleteSyncJobsBefore(ctx context.Context, keepDays int) (int64, error) {

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"time"
 )
 
 // StatsSummary 表示统计页概要数据。
@@ -228,8 +227,6 @@ func (s *Store) ListAnimeCardStats(ctx context.Context) (map[int64]AnimeCardStat
 	}
 	return result, nil
 }
-
-var _ = time.Now // 预留：未来按时间过滤可能使用
 
 // EpisodeSourceCounts 返回某动漫每集的视频源数量。
 func (s *Store) EpisodeSourceCounts(ctx context.Context, animeID int64) (map[int64]int, error) {

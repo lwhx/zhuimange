@@ -91,7 +91,6 @@ func (s *Scheduler) CheckAndSync(ctx context.Context) {
 	}
 	notifyEnabled, _ := s.store.GetSetting(ctx, "tg_notify_enabled", "false")
 
-	// 第一阶段：批量入队 + 记录同步前源数
 	type pendingTask struct {
 		anime     *model.Anime
 		taskID    string
@@ -118,12 +117,10 @@ func (s *Scheduler) CheckAndSync(ctx context.Context) {
 	}
 	slog.Info("自动同步开始", "anime_count", len(pending))
 
-	// 第二阶段：统一等待所有任务完成
 	for _, p := range pending {
 		s.waitTask(ctx, p.taskID)
 	}
 
-	// 第三阶段：收集新增源并发通知
 	if notifyEnabled == "true" {
 		updates := map[string][]notify.EpisodeUpdate{}
 		for _, p := range pending {

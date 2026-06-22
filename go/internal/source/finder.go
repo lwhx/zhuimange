@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -353,16 +352,6 @@ func hasAnyKeyword(text string, keywords []string) bool {
 		}
 	}
 	return false
-}
-
-// sortedVideosForTest 返回稳定排序的视频 ID，便于后续测试扩展。
-func sortedVideosForTest(videos []invidious.Video) []string {
-	ids := make([]string, 0, len(videos))
-	for _, video := range videos {
-		ids = append(ids, video.VideoID)
-	}
-	sort.Strings(ids)
-	return ids
 }
 
 // PrimaryInstanceURL 返回当前 Invidious 主实例地址（去尾斜杠），

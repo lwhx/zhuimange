@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_anime_id ON sync_jobs(anime_id);
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status);
 
--- 观看历史（支撑时间线/统计，阶段 6）
+-- 观看历史（支撑时间线/统计）
 CREATE TABLE IF NOT EXISTS watch_history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     anime_id        INTEGER NOT NULL REFERENCES animes(id) ON DELETE CASCADE,
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS watch_history (
 CREATE INDEX IF NOT EXISTS idx_watch_history_anime_id ON watch_history(anime_id);
 CREATE INDEX IF NOT EXISTS idx_watch_history_watched_at ON watch_history(watched_at);
 
--- 更新事件流（支撑日历/看板，阶段 6）
+-- 更新事件流（支撑日历/看板）
 CREATE TABLE IF NOT EXISTS update_events (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     anime_id        INTEGER NOT NULL REFERENCES animes(id) ON DELETE CASCADE,
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS update_events (
 CREATE INDEX IF NOT EXISTS idx_update_events_anime_id ON update_events(anime_id);
 CREATE INDEX IF NOT EXISTS idx_update_events_created_at ON update_events(created_at);
 
--- 收藏夹（支撑播放体验，阶段 6）
+-- 收藏夹（支撑播放体验）
 CREATE TABLE IF NOT EXISTS favorites (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,

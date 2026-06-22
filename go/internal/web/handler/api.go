@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -377,5 +376,3 @@ func (h *AppHandlers) proxyAllowedHosts(ctx context.Context) map[string]bool {
 	return hosts
 }
 
-// strconv 占位（避免某些条件下未使用）
-var _ = fmt.Sprintf

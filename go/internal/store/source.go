@@ -132,12 +132,6 @@ func (s *Store) GetAliases(ctx context.Context, animeID int64) ([]string, error)
 	return list, rows.Err()
 }
 
-// DeleteAlias 删除自定义别名。
-func (s *Store) DeleteAlias(ctx context.Context, animeID int64, alias string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM custom_aliases WHERE anime_id = ? AND alias = ?`, animeID, alias)
-	return err
-}
-
 // ==================== GlobalAlias 查询 ====================
 
 // GetGlobalAliasesByTitle 查询某标题的全局别名。

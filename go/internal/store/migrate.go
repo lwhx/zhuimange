@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -186,16 +185,4 @@ func (s *Store) GetAllSettings(ctx context.Context) (map[string]string, error) {
 		m[k] = v
 	}
 	return m, rows.Err()
-}
-
-// GetSettingJSON 读取 JSON 格式的设置并反序列化到 target。
-func (s *Store) GetSettingJSON(ctx context.Context, key string, target any) error {
-	val, err := s.GetSetting(ctx, key, "")
-	if err != nil {
-		return err
-	}
-	if val == "" {
-		return nil
-	}
-	return json.Unmarshal([]byte(val), target)
 }

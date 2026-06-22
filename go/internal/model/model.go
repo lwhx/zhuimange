@@ -65,37 +65,6 @@ type Source struct {
 	FailCount      int        `json:"fail_count"`
 }
 
-// HealthRank 健康状态的排序权重（用于 source_sort_key）。
-// available=3, unknown=2, error=1, invalid=0。
-func (s *Source) HealthRank() int {
-	switch s.HealthStatus {
-	case "available":
-		return 3
-	case "unknown":
-		return 2
-	case "error":
-		return 1
-	default:
-		return 0
-	}
-}
-
-// CustomAlias 对应 custom_aliases 表，用户为某动漫手动添加的别名。
-type CustomAlias struct {
-	ID        int64     `json:"id"`
-	AnimeID   int64     `json:"anime_id"`
-	Alias     string    `json:"alias"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// GlobalAlias 对应 global_aliases 表，全局别名库（内置国漫别名 + 用户添加）。
-type GlobalAlias struct {
-	ID       int64  `json:"id"`
-	Title    string `json:"title"`
-	Alias    string `json:"alias"`
-	Category string `json:"category"` // donghua/anime
-}
-
 // SourceRule 对应 anime_source_rules 表，某动漫的搜索黑白名单规则。
 // JSON 数组字段在 Go 侧反序列化为切片。
 type SourceRule struct {
@@ -107,13 +76,6 @@ type SourceRule struct {
 	DenyChannels  []string  `json:"deny_channels"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
-}
-
-// Setting 对应 settings 表的键值对（运行时可改配置）。
-type Setting struct {
-	Key       string    `json:"key"`
-	Value     string    `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // SyncLog 对应 sync_logs 表，同步操作的结果摘要。
@@ -128,16 +90,7 @@ type SyncLog struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// TrustedChannel 对应 trusted_channels 表，受信任的频道（评分加权）。
-type TrustedChannel struct {
-	ID          int64     `json:"id"`
-	ChannelID   string    `json:"channel_id"`
-	ChannelName string    `json:"channel_name"`
-	Priority    int       `json:"priority"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// SyncJob 对应新增的 sync_jobs 表，同步任务持久化（进程重启可恢复）。
+// SyncJob 对应 sync_jobs 表，同步任务持久化（进程重启可恢复）。
 type SyncJob struct {
 	ID         int64      `json:"id"`
 	TaskID     string     `json:"task_id"` // UUID，前端 SSE 订阅用
@@ -149,21 +102,4 @@ type SyncJob struct {
 	Message    string     `json:"message"`
 	CreatedAt  time.Time  `json:"created_at"`
 	FinishedAt *time.Time `json:"finished_at"`
-}
-
-// WatchHistory 对应新增的 watch_history 表，支撑时间线/统计（阶段 6）。
-type WatchHistory struct {
-	ID        int64     `json:"id"`
-	AnimeID   int64     `json:"anime_id"`
-	EpisodeID int64     `json:"episode_id"`
-	WatchedAt time.Time `json:"watched_at"`
-}
-
-// UpdateEvent 对应新增的 update_events 表，更新事件流，支撑日历/看板（阶段 6）。
-type UpdateEvent struct {
-	ID          int64     `json:"id"`
-	AnimeID     int64     `json:"anime_id"`
-	Type        string    `json:"type"` // new_episodes/source_found/synced
-	SourceCount int       `json:"source_count"`
-	CreatedAt   time.Time `json:"created_at"`
 }

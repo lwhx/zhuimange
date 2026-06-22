@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lwhx/zhuimange/internal/auth"
 	tmplpkg "github.com/lwhx/zhuimange/internal/web/template"
 )
 
@@ -187,5 +186,3 @@ func formatFloat(v float64) string {
 	return string(bytes)
 }
 
-// 确保引入 auth 包仅为校验（ChangePassword 已在 Authenticator 上）
-var _ = auth.IsBcryptHash

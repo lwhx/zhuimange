@@ -228,6 +228,3 @@ func envCSV(key string, def []string) []string {
 	}
 	return result
 }
-
-// TMDBImageBase 是 TMDB 海报的基础 URL（w500 尺寸）。
-const TMDBImageBase = "https://image.tmdb.org/t/p/w500"

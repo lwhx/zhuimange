@@ -45,12 +45,6 @@ var episodePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`[第]\s*([一二三四五六七八九十百千]+)\s*[集话話期回]`),
 }
 
-var seasonPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`第\s*(\d+)\s*季`),
-	regexp.MustCompile(`[Ss](?:eason)?\s*(\d+)`),
-	regexp.MustCompile(`第\s*([一二三四五六七八九十]+)\s*季`),
-}
-
 // NormalizeText 对标题执行繁简转换、同音字替换、去标点、空白归一和小写处理。
 func NormalizeText(text string) string {
 	// 1. 繁体转简体（与 Python 版 OpenCC('t2s') 对齐）
@@ -83,20 +77,6 @@ func NormalizeText(text string) string {
 // ExtractEpisodeNumber 从标题中提取集数，未识别时返回 false。
 func ExtractEpisodeNumber(text string) (int, bool) {
 	for _, pattern := range episodePatterns {
-		matches := pattern.FindStringSubmatch(text)
-		if len(matches) < 2 {
-			continue
-		}
-		if value, ok := parseNumber(matches[1]); ok {
-			return value, true
-		}
-	}
-	return 0, false
-}
-
-// ExtractSeasonNumber 从标题中提取季数，未识别时返回 false。
-func ExtractSeasonNumber(text string) (int, bool) {
-	for _, pattern := range seasonPatterns {
 		matches := pattern.FindStringSubmatch(text)
 		if len(matches) < 2 {
 			continue
