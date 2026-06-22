@@ -41,14 +41,14 @@ type SeasonDetail struct {
 
 // AnimeDetail 动漫详情。
 type AnimeDetail struct {
-	TMDBID        int64         `json:"tmdb_id"`
-	TitleCN       string        `json:"title_cn"`
-	TitleEN       string        `json:"title_en"`
-	PosterURL     string        `json:"poster_url"`
-	Overview      string        `json:"overview"`
-	AirDate       string        `json:"air_date"`
-	TotalEpisodes int           `json:"total_episodes"`
-	Status        string        `json:"status"`
+	TMDBID        int64          `json:"tmdb_id"`
+	TitleCN       string         `json:"title_cn"`
+	TitleEN       string         `json:"title_en"`
+	PosterURL     string         `json:"poster_url"`
+	Overview      string         `json:"overview"`
+	AirDate       string         `json:"air_date"`
+	TotalEpisodes int            `json:"total_episodes"`
+	Status        string         `json:"status"`
 	Seasons       []SeasonDetail `json:"seasons"`
 }
 
@@ -80,12 +80,18 @@ func New(cfg *config.Config) *Client {
 		http: &http.Client{
 			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
+				Proxy:               http.ProxyFromEnvironment,
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 5,
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
 	}
+}
+
+// SetAPIKey 运行时更新 API Key（设置页修改后调用）。
+func (c *Client) SetAPIKey(key string) {
+	c.apiKey = key
 }
 
 // request 发送 TMDB API 请求并解析 JSON。
@@ -128,8 +134,8 @@ func (c *Client) request(ctx context.Context, endpoint string, params map[string
 // SearchAnime 搜索动漫（with_genres=16 动画过滤）。
 func (c *Client) SearchAnime(ctx context.Context, query string) ([]SearchResult, error) {
 	data, err := c.request(ctx, "/search/tv", map[string]string{
-		"query":       query,
-		"with_genres": "16",
+		"query":         query,
+		"with_genres":   "16",
 		"include_adult": "false",
 	})
 	if err != nil {

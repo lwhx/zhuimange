@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="error-page">
+    <div class="error-page__code">{{.Code}}</div>
+    <div class="error-page__icon">{{.Icon}}</div>
+    <h1 class="error-page__title">{{.Title}}</h1>
+    <p class="error-page__desc">{{.Message}}</p>
+    <div class="error-page__actions">
+        <a href="/" class="btn btn--primary">🏠 返回首页</a>
+        <a href="javascript:history.back()" class="btn btn--secondary">↩️ 返回上页</a>
+    </div>
+</div>
+{{end}}

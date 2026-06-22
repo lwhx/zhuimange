@@ -72,6 +72,22 @@ func (s *Store) DeleteSourcesForEpisode(ctx context.Context, episodeID int64) er
 	return err
 }
 
+// GetTopSourceVideoID 返回某动漫评分最高的视频源 video_id（跨集，用于手动动漫封面兜底）。
+// 无视频源时返回空串。
+func (s *Store) GetTopSourceVideoID(ctx context.Context, animeID int64) (string, error) {
+	var videoID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT s.video_id FROM sources s
+		JOIN episodes e ON s.episode_id = e.id
+		WHERE e.anime_id = ?
+		ORDER BY s.match_score DESC, s.created_at ASC
+		LIMIT 1`, animeID).Scan(&videoID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return videoID, err
+}
+
 // CountSourcesForEpisode 统计某集视频源数量。
 func (s *Store) CountSourcesForEpisode(ctx context.Context, episodeID int64) (int, error) {
 	var count int
@@ -200,6 +216,14 @@ func (s *Store) IsTrustedChannel(ctx context.Context, channelID string) (bool, e
 	return exists == 1, err
 }
 
+// TrustedChannelChecker 返回供评分器使用的可信频道判断函数。
+func (s *Store) TrustedChannelChecker(ctx context.Context) func(channelID string) bool {
+	return func(channelID string) bool {
+		trusted, err := s.IsTrustedChannel(ctx, channelID)
+		return err == nil && trusted
+	}
+}
+
 // ==================== SyncLog ====================
 
 // AddSyncLog 记录同步日志。
@@ -208,6 +232,20 @@ func (s *Store) AddSyncLog(ctx context.Context, animeID int64, syncType string, 
 		INSERT INTO sync_logs (anime_id, sync_type, episodes_synced, sources_found, status, message)
 		VALUES (?, ?, ?, ?, ?, ?)`, nullableInt64(animeID), syncType, epsSynced, sourcesFound, status, message)
 	return err
+}
+
+// DeleteSyncLogsBefore 删除 created_at 早于指定天数的同步日志。
+// 用于定时 GC，防止 sync_logs 表无限增长。
+func (s *Store) DeleteSyncLogsBefore(ctx context.Context, keepDays int) (int64, error) {
+	if keepDays <= 0 {
+		keepDays = 30
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM sync_logs WHERE created_at < datetime('now', ?)`, fmt.Sprintf("-%d days", keepDays))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // nullableInt64 0 值转 NULL（anime_id 可能被 SET NULL）。

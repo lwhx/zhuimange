@@ -19,27 +19,29 @@ import (
 // 运行时可变的配置（如评分阈值、Invidious 实例）不在此处，由 store 层从 DB 读取。
 type Config struct {
 	// 基础
-	BaseDir     string
-	DatabasePath string
-	LogLevel    string
-	Debug       bool
-	TZ          string
-	Port        int
-	MetricsToken string
+	BaseDir          string
+	DatabasePath     string
+	LogLevel         string
+	Debug            bool
+	TZ               string
+	Port             int
+	MetricsToken     string
 	ProxyTrustedHops int
 
 	// 会话安全
-	SecretKey        string
-	AuthSessionDays  int
+	SecretKey       string
+	AuthSessionDays int
 
 	// TMDB
-	TMDBAPIKey    string
-	TMDBBaseURL   string
-	TMDBLanguage  string
+	TMDBAPIKey   string
+	TMDBBaseURL  string
+	TMDBLanguage string
 
 	// Invidious 基础（实例 URL 等运行时可改的配置由 store 层管理）
-	InvidiousAPITimeout   int
-	InvidiousPrimaryWeight int
+	InvidiousURL            string
+	InvidiousFallbackURLs   []string
+	InvidiousAPITimeout     int
+	InvidiousPrimaryWeight  int
 	InvidiousFallbackWeight int
 
 	// 匹配参数（默认值，运行时部分可被 DB settings 覆盖）
@@ -54,17 +56,17 @@ type Config struct {
 	MaxSourcesPerEpisode    int
 
 	// 评分权重（tie-breaker 六维权重，Go 版统一管理，消除 Python 版死代码）
-	TieWeightTitle    float64
-	TieWeightEpisode  float64
-	TieWeightChannel  float64
-	TieWeightRecency  float64
-	TieWeightView     float64
-	TieWeightQuality  float64
+	TieWeightTitle   float64
+	TieWeightEpisode float64
+	TieWeightChannel float64
+	TieWeightRecency float64
+	TieWeightView    float64
+	TieWeightQuality float64
 
 	// 评分阈值（集中管理，Python 版散落在多处）
-	TitleStrongThreshold  float64 // 标题强匹配阈值（75）
-	TitleAcceptThreshold  float64 // 标题接受阈值（30）
-	ManualMatchThreshold  int     // 手动添加动漫的匹配阈值（30）
+	TitleStrongThreshold float64 // 标题强匹配阈值（75）
+	TitleAcceptThreshold float64 // 标题接受阈值（30）
+	ManualMatchThreshold int     // 手动添加动漫的匹配阈值（30）
 
 	// 缓存与保留
 	SyncTaskRetentionSeconds int
@@ -95,6 +97,8 @@ func Load(baseDir string) (*Config, error) {
 	c.TMDBLanguage = envStr("TMDB_LANGUAGE", "zh-CN")
 
 	// Invidious
+	c.InvidiousURL = strings.TrimRight(envStr("INVIDIOUS_URL", "https://yewtu.be"), "/")
+	c.InvidiousFallbackURLs = envCSV("INVIDIOUS_FALLBACK_URLS", nil)
 	c.InvidiousAPITimeout = envInt("INVIDIOUS_API_TIMEOUT", 30)
 	c.InvidiousPrimaryWeight = envInt("INVIDIOUS_PRIMARY_WEIGHT", 7)
 	c.InvidiousFallbackWeight = envInt("INVIDIOUS_FALLBACK_WEIGHT", 3)
@@ -207,6 +211,22 @@ func envBool(key string, def bool) bool {
 		}
 	}
 	return def
+}
+
+func envCSV(key string, def []string) []string {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return def
+	}
+	parts := strings.Split(v, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			result = append(result, strings.TrimRight(item, "/"))
+		}
+	}
+	return result
 }
 
 // TMDBImageBase 是 TMDB 海报的基础 URL（w500 尺寸）。

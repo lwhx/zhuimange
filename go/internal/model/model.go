@@ -9,8 +9,8 @@ import "time"
 // Anime 对应 animes 表，一部追更的动漫。
 type Anime struct {
 	ID            int64      `json:"id"`
-	TMDBID        *int64     `json:"tmdb_id"`        // nil 表示手动添加（无 TMDB 元数据）
-	BangumiID     *int64     `json:"bangumi_id"`     // Bangumi 条目 ID，用于互通
+	TMDBID        *int64     `json:"tmdb_id"`    // nil 表示手动添加（无 TMDB 元数据）
+	BangumiID     *int64     `json:"bangumi_id"` // Bangumi 条目 ID，用于互通
 	TitleCN       string     `json:"title_cn"`
 	TitleEN       string     `json:"title_en"`
 	PosterURL     string     `json:"poster_url"`
@@ -31,37 +31,38 @@ func (a *Anime) IsManual() bool { return a.TMDBID == nil }
 
 // Episode 对应 episodes 表，动漫的单集。
 type Episode struct {
-	ID           int64     `json:"id"`
-	AnimeID      int64     `json:"anime_id"`
-	SeasonNumber int       `json:"season_number"`
-	EpisodeNumber int      `json:"episode_number"`
-	AbsoluteNum  int       `json:"absolute_num"` // 跨季连续编号（1,2,3...），追更场景核心标识
-	Title        string    `json:"title"`
-	Overview     string    `json:"overview"`
-	AirDate      string    `json:"air_date"`
-	StillPath    string    `json:"still_path"`
-	Watched      bool      `json:"watched"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	AnimeID       int64     `json:"anime_id"`
+	SeasonNumber  int       `json:"season_number"`
+	EpisodeNumber int       `json:"episode_number"`
+	AbsoluteNum   int       `json:"absolute_num"` // 跨季连续编号（1,2,3...），追更场景核心标识
+	Title         string    `json:"title"`
+	Overview      string    `json:"overview"`
+	AirDate       string    `json:"air_date"`
+	StillPath     string    `json:"still_path"`
+	Watched       bool      `json:"watched"`
+	SourceCount   int       `json:"source_count"` // 该集视频源数（详情页展示用，非 DB 字段）
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Source 对应 sources 表，某集的一个视频源（来自 Invidious 搜索结果）。
 type Source struct {
-	ID            int64      `json:"id"`
-	EpisodeID     int64      `json:"episode_id"`
-	VideoID       string     `json:"video_id"`
-	Title         string     `json:"title"`
-	ChannelID     string     `json:"channel_id"`
-	ChannelName   string     `json:"channel_name"`
-	Duration      int        `json:"duration"`
-	ViewCount     int64      `json:"view_count"`
-	PublishedAt   string     `json:"published_at"`
-	MatchScore    float64    `json:"match_score"`
-	IsValid       bool       `json:"is_valid"`
-	CreatedAt     time.Time  `json:"created_at"`
-	HealthStatus  string     `json:"health_status"`  // available/unknown/error/invalid
-	LastCheckedAt *time.Time `json:"last_checked_at"`
-	LastCheckError string    `json:"last_check_error"`
-	FailCount     int        `json:"fail_count"`
+	ID             int64      `json:"id"`
+	EpisodeID      int64      `json:"episode_id"`
+	VideoID        string     `json:"video_id"`
+	Title          string     `json:"title"`
+	ChannelID      string     `json:"channel_id"`
+	ChannelName    string     `json:"channel_name"`
+	Duration       int        `json:"duration"`
+	ViewCount      int64      `json:"view_count"`
+	PublishedAt    string     `json:"published_at"`
+	MatchScore     float64    `json:"match_score"`
+	IsValid        bool       `json:"is_valid"`
+	CreatedAt      time.Time  `json:"created_at"`
+	HealthStatus   string     `json:"health_status"` // available/unknown/error/invalid
+	LastCheckedAt  *time.Time `json:"last_checked_at"`
+	LastCheckError string     `json:"last_check_error"`
+	FailCount      int        `json:"fail_count"`
 }
 
 // HealthRank 健康状态的排序权重（用于 source_sort_key）。
@@ -141,8 +142,8 @@ type SyncJob struct {
 	ID         int64      `json:"id"`
 	TaskID     string     `json:"task_id"` // UUID，前端 SSE 订阅用
 	AnimeID    int64      `json:"anime_id"`
-	Status     string     `json:"status"` // queued/running/success/error
-	Mode       string     `json:"mode"`   // incremental/full
+	Status     string     `json:"status"`    // queued/running/success/error
+	Mode       string     `json:"mode"`      // incremental/full
 	SyncType   string     `json:"sync_type"` // auto/manual
 	Progress   int        `json:"progress"`  // 0-100
 	Message    string     `json:"message"`

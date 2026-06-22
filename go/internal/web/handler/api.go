@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -56,7 +57,7 @@ func (h *AppHandlers) searchAnime(w http.ResponseWriter, r *http.Request) {
 	results, err := h.tmdb.SearchAnime(r.Context(), q)
 	if err != nil {
 		slog.Warn("搜索动漫失败", "query", q, "error", err)
-		successResp(w, []any{}, "搜索完成") // 与 Python 版一致：失败返回空
+		successResp(w, []any{}, "搜索完成")
 		return
 	}
 	successResp(w, results, "搜索成功")
@@ -88,13 +89,11 @@ func (h *AppHandlers) addAnime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 拉取全部集数
 	episodes, err := h.tmdb.GetAllEpisodes(r.Context(), req.TMDBID, detail.Seasons)
 	if err != nil {
 		slog.Warn("拉取集数失败", "tmdb_id", req.TMDBID, "error", err)
 	}
 
-	// 入库动漫
 	anime := &model.Anime{
 		TMDBID:        &detail.TMDBID,
 		TitleCN:       detail.TitleCN,
@@ -107,24 +106,22 @@ func (h *AppHandlers) addAnime(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := h.store.CreateAnime(r.Context(), anime)
 	if err != nil {
-		// 可能是重复添加（tmdb_id 唯一约束）
 		errorResp(w, http.StatusConflict, "添加失败（可能已存在）", "DUPLICATE")
 		return
 	}
 
-	// 入库集数
 	if len(episodes) > 0 {
 		eps := make([]model.Episode, 0, len(episodes))
 		for _, e := range episodes {
 			eps = append(eps, model.Episode{
-				AnimeID:      created.ID,
-				SeasonNumber: e.SeasonNumber,
+				AnimeID:       created.ID,
+				SeasonNumber:  e.SeasonNumber,
 				EpisodeNumber: e.EpisodeNumber,
-				AbsoluteNum:  e.AbsoluteNum,
-				Title:        e.Title,
-				Overview:     e.Overview,
-				AirDate:      e.AirDate,
-				StillPath:    e.StillPath,
+				AbsoluteNum:   e.AbsoluteNum,
+				Title:         e.Title,
+				Overview:      e.Overview,
+				AirDate:       e.AirDate,
+				StillPath:     e.StillPath,
 			})
 		}
 		if _, err := h.store.AddEpisodes(r.Context(), eps); err != nil {
@@ -138,9 +135,9 @@ func (h *AppHandlers) addAnime(w http.ResponseWriter, r *http.Request) {
 // addAnimeManual POST /api/anime/add_manual （手动添加）
 func (h *AppHandlers) addAnimeManual(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title        string `json:"title"`
-		TotalEpisodes int    `json:"total_episodes"`
-		Aliases      string `json:"aliases"`
+		Title         string   `json:"title"`
+		TotalEpisodes int      `json:"total_episodes"`
+		Aliases       []string `json:"aliases"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorResp(w, http.StatusBadRequest, "请求格式错误", "INVALID_BODY")
@@ -151,9 +148,24 @@ func (h *AppHandlers) addAnimeManual(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 自动搜索封面：从 TMDB 匹配首个结果（与 Python 版 add_anime_manual 一致）
+	posterURL := ""
+	overview := ""
+	if h.tmdb != nil {
+		results, err := h.tmdb.SearchAnime(r.Context(), strings.TrimSpace(req.Title))
+		if err == nil && len(results) > 0 {
+			posterURL = results[0].PosterURL
+			overview = results[0].Overview
+		} else if err != nil {
+			slog.Warn("手动添加自动搜索封面失败", "title", req.Title, "error", err)
+		}
+	}
+
 	anime := &model.Anime{
 		TitleCN:       strings.TrimSpace(req.Title),
 		TotalEpisodes: req.TotalEpisodes,
+		PosterURL:     posterURL,
+		Overview:      overview,
 	}
 	created, err := h.store.CreateAnime(r.Context(), anime)
 	if err != nil {
@@ -161,17 +173,50 @@ func (h *AppHandlers) addAnimeManual(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 添加别名（逗号分隔）
-	if req.Aliases != "" {
-		for _, alias := range strings.Split(req.Aliases, ",") {
-			alias = strings.TrimSpace(alias)
-			if alias != "" {
-				_ = h.store.AddAlias(r.Context(), created.ID, alias)
+	for _, alias := range req.Aliases {
+		alias = strings.TrimSpace(alias)
+		if alias != "" {
+			if err := h.store.AddAlias(r.Context(), created.ID, alias); err != nil {
+				slog.Warn("添加别名失败", "anime_id", created.ID, "alias", alias, "error", err)
 			}
 		}
 	}
 
+	// 按 total_episodes 自动创建集数记录（与 Python 版一致）
+	if req.TotalEpisodes > 0 {
+		eps := make([]model.Episode, 0, req.TotalEpisodes)
+		for i := 1; i <= req.TotalEpisodes; i++ {
+			eps = append(eps, model.Episode{
+				AnimeID:       created.ID,
+				SeasonNumber:  1,
+				EpisodeNumber: i,
+				AbsoluteNum:   i,
+			})
+		}
+		if _, err := h.store.AddEpisodes(r.Context(), eps); err != nil {
+			slog.Warn("批量插入集数失败", "anime_id", created.ID, "error", err)
+		}
+	}
+
 	successResp(w, map[string]any{"anime_id": created.ID}, "添加成功")
+}
+
+// deleteAnime DELETE /api/anime/{id} 删除动漫（级联删除集数/源/别名）。
+func (h *AppHandlers) deleteAnime(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseIDParam(w, r, "id")
+	if !ok {
+		return
+	}
+	anime, err := h.store.GetAnime(r.Context(), id)
+	if err != nil || anime == nil {
+		errorResp(w, http.StatusNotFound, "动漫不存在", "ANIME_NOT_FOUND")
+		return
+	}
+	if err := h.store.DeleteAnime(r.Context(), id); err != nil {
+		errorResp(w, http.StatusInternalServerError, "删除失败", "DELETE_ERROR")
+		return
+	}
+	successResp(w, nil, "动漫删除成功")
 }
 
 // ==================== 进度 API ====================
@@ -181,9 +226,8 @@ func (h *AppHandlers) markWatched(w http.ResponseWriter, r *http.Request) {
 	animeID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	epNum, _ := strconv.Atoi(chi.URLParam(r, "ep"))
 
-	today := "" // 已开播校验简化（阶段3完善）
-	aired, err := h.store.EpisodeIsAired(r.Context(), animeID, epNum, today)
-	if err == nil && !aired && today != "" {
+	aired, err := h.store.EpisodeIsAired(r.Context(), animeID, epNum, time.Now().Format("2006-01-02"))
+	if err == nil && !aired {
 		errorResp(w, http.StatusBadRequest, "该集数尚未开播", "NOT_AIRED")
 		return
 	}
@@ -243,17 +287,19 @@ func (h *AppHandlers) updateAnimeProgress(ctx context.Context, animeID int64) {
 	if err != nil {
 		return
 	}
-	_ = h.store.UpdateAnime(ctx, animeID, map[string]any{"watched_ep": watched})
+	if err := h.store.UpdateAnime(ctx, animeID, map[string]any{"watched_ep": watched}); err != nil {
+		slog.Warn("更新 watched_ep 计数失败", "anime_id", animeID, "watched", watched, "error", err)
+	}
 }
 
 // ==================== 图片代理 ====================
 
 var proxyWhitelistHosts = map[string]bool{
-	"image.tmdb.org":   true,
-	"img.youtube.com":  true,
-	"i.ytimg.com":      true,
-	"lain.bgm.net":     true,
-	"lain.bgm.tv":      true,
+	"image.tmdb.org":  true,
+	"img.youtube.com": true,
+	"i.ytimg.com":     true,
+	"lain.bgm.net":    true,
+	"lain.bgm.tv":     true,
 }
 
 // proxyImage GET /api/proxy_image?url=
@@ -268,14 +314,24 @@ func (h *AppHandlers) proxyImage(w http.ResponseWriter, r *http.Request) {
 		errorResp(w, http.StatusBadRequest, "非法的图片地址", "INVALID_URL")
 		return
 	}
-	// SSRF 白名单：固定域名 + Invidious 实例域名
+	hostname := strings.ToLower(parsed.Hostname())
 	allowed := h.proxyAllowedHosts(r.Context())
-	if !allowed[parsed.Hostname()] {
+	if !allowed[hostname] {
 		errorResp(w, http.StatusForbidden, "该图片域名不在允许列表内", "HOST_NOT_ALLOWED")
 		return
 	}
 
-	resp, err := http.Get(target)
+	client := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		// 重定向后重新校验 hostname（小写归一）和 scheme
+		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+			return http.ErrUseLastResponse
+		}
+		if !allowed[strings.ToLower(req.URL.Hostname())] {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}}
+	resp, err := client.Get(target)
 	if err != nil {
 		slog.Warn("图片代理失败", "url", target, "error", err)
 		errorResp(w, http.StatusBadGateway, "图片代理请求失败", "PROXY_ERROR")
@@ -283,6 +339,10 @@ func (h *AppHandlers) proxyImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		errorResp(w, http.StatusBadGateway, "图片代理请求失败", "PROXY_ERROR")
+		return
+	}
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
 		errorResp(w, http.StatusUnsupportedMediaType, "非图片内容", "NOT_IMAGE")
@@ -292,7 +352,7 @@ func (h *AppHandlers) proxyImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 10<<20))
 }
 
 // proxyAllowedHosts 合并固定白名单与当前 Invidious 实例域名。
@@ -301,12 +361,10 @@ func (h *AppHandlers) proxyAllowedHosts(ctx context.Context) map[string]bool {
 	for k := range proxyWhitelistHosts {
 		hosts[k] = true
 	}
-	// 读取 Invidious 主实例域名
 	primaryURL, _ := h.store.GetSetting(ctx, "invidious_url", "")
 	if u, err := url.Parse(primaryURL); err == nil && u.Hostname() != "" {
 		hosts[u.Hostname()] = true
 	}
-	// 备用实例
 	fallbacks, _ := h.store.GetSetting(ctx, "invidious_fallback_urls", "[]")
 	var urls []string
 	if err := json.Unmarshal([]byte(fallbacks), &urls); err == nil {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,12 +21,23 @@ import (
 // Manager 管理模板渲染。预加载 base 布局源码，渲染时合并具体页面。
 type Manager struct {
 	templateDir string
+	fsys        fs.FS
 	baseSource  string // base.html 的源码，缓存避免重复读取
 	funcMap     template.FuncMap
 }
 
 // New 创建模板管理器。
 func New(templateDir string) (*Manager, error) {
+	return newManager(templateDir, nil)
+}
+
+// NewFS 从嵌入文件系统创建模板管理器。
+func NewFS(fsys fs.FS) (*Manager, error) {
+	return newManager("", fsys)
+}
+
+// newManager 创建模板管理器。
+func newManager(templateDir string, fsys fs.FS) (*Manager, error) {
 	funcMap := template.FuncMap{
 		"add":       func(a, b int) int { return a + b },
 		"sub":       func(a, b int) int { return a - b },
@@ -61,6 +73,21 @@ func New(templateDir string) (*Manager, error) {
 			}
 			return p
 		},
+		// ratioPercent 计算 watched/total 百分比（浮点，用于进度条宽度）
+		"ratioPercent": func(watched, total int) int {
+			if total <= 0 {
+				return 0
+			}
+			p := watched * 100 / total
+			if p > 100 {
+				p = 100
+			}
+			return p
+		},
+		// ruleList 将规则字符串数组转为逗号分隔展示文本（供输入框回显）
+		"ruleList": func(items []string) string {
+			return strings.Join(items, ", ")
+		},
 		// youtubeURL 拼接 YouTube 观看链接
 		"youtubeURL": func(videoID string) string {
 			return "https://www.youtube.com/watch?v=" + videoID
@@ -92,15 +119,29 @@ func New(templateDir string) (*Manager, error) {
 			}
 			return fmt.Sprintf("%d", views)
 		},
+		// formatTime 格式化可选时间为 "2006-01-02 15:04"（nil 返回空串）
+		"formatTime": func(t *time.Time) string {
+			if t == nil {
+				return ""
+			}
+			return t.Format("2006-01-02 15:04")
+		},
 	}
 
-	baseSource, err := os.ReadFile(filepath.Join(templateDir, "base.html"))
+	var baseSource []byte
+	var err error
+	if fsys != nil {
+		baseSource, err = fs.ReadFile(fsys, "base.html")
+	} else {
+		baseSource, err = os.ReadFile(filepath.Join(templateDir, "base.html"))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("读取 base.html 失败: %w", err)
 	}
 
 	return &Manager{
 		templateDir: templateDir,
+		fsys:        fsys,
 		baseSource:  string(baseSource),
 		funcMap:     funcMap,
 	}, nil
@@ -117,7 +158,7 @@ type RenderData struct {
 
 // RenderPage 渲染指定页面：合并 base.html + 页面文件，执行 base.html。
 func (m *Manager) RenderPage(w io.Writer, pageTemplate string, data *RenderData) error {
-	pageSource, err := os.ReadFile(filepath.Join(m.templateDir, pageTemplate))
+	pageSource, err := m.readTemplate(pageTemplate)
 	if err != nil {
 		return fmt.Errorf("读取页面模板 %s 失败: %w", pageTemplate, err)
 	}
@@ -138,10 +179,18 @@ func (m *Manager) RenderPage(w io.Writer, pageTemplate string, data *RenderData)
 	return tmpl.Execute(w, data)
 }
 
+// readTemplate 读取模板文件，优先使用嵌入文件系统。
+func (m *Manager) readTemplate(name string) ([]byte, error) {
+	if m.fsys != nil {
+		return fs.ReadFile(m.fsys, name)
+	}
+	return os.ReadFile(filepath.Join(m.templateDir, name))
+}
+
 // RenderPartial 渲染片段模板（不走 base 布局，用于 HTMX 局部加载）。
 // data 直接作为模板根上下文（.）传入。
 func (m *Manager) RenderPartial(w io.Writer, partialTemplate string, data any) error {
-	source, err := os.ReadFile(filepath.Join(m.templateDir, partialTemplate))
+	source, err := m.readTemplate(partialTemplate)
 	if err != nil {
 		return fmt.Errorf("读取片段模板 %s 失败: %w", partialTemplate, err)
 	}

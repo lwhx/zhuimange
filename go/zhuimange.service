@@ -1,0 +1,13 @@
+[Unit]
+Description=追漫阁 Go Service
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/zhuimange
+ExecStart=/opt/zhuimange/zhuimange
+Restart=always
+RestartSec=5
+Environment=PORT=8001
+
+[Install]
+WantedBy=multi-user.target

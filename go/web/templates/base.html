@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{if .Title}}{{.Title}} - {{end}}追漫阁</title>
-    <link rel="stylesheet" href="/static/app.css?v=1">
+    <link rel="stylesheet" href="/static/app.css?v=7">
     <!-- 内联主题初始化，避免 FOUC（闪烁） -->
     <script>
         (function() {
@@ -21,8 +21,40 @@
             <a href="/stats" class="navbar__link">统计</a>
             <a href="/diagnostics" class="navbar__link">诊断</a>
             <a href="/settings" class="navbar__link">设置</a>
-            <button class="navbar__theme-btn" onclick="toggleTheme()" title="切换主题">🎨</button>
-            <a href="/logout" class="navbar__link navbar__link--muted">退出</a>
+            <div class="navbar__theme-selector">
+                <button type="button" class="navbar__theme-btn" onclick="toggleThemeDropdown()" title="切换主题">🎨</button>
+                <div class="theme-dropdown" id="theme-dropdown">
+                    <div class="theme-dropdown__header">
+                        <span>🎨 配色方案</span>
+                        <button type="button" class="theme-dropdown__close" onclick="toggleThemeDropdown()">&times;</button>
+                    </div>
+                    <div class="theme-dropdown__list">
+                        <button type="button" class="theme-option" data-theme="midnight" onclick="setTheme('midnight')">
+                            <span class="theme-option__color" style="background:linear-gradient(135deg,#0f172a,#3b82f6)"></span>
+                            <span class="theme-option__name">午夜蓝</span>
+                        </button>
+                        <button type="button" class="theme-option" data-theme="ocean" onclick="setTheme('ocean')">
+                            <span class="theme-option__color" style="background:linear-gradient(135deg,#0c1844,#60a5fa)"></span>
+                            <span class="theme-option__name">深海</span>
+                        </button>
+                        <button type="button" class="theme-option" data-theme="forest" onclick="setTheme('forest')">
+                            <span class="theme-option__color" style="background:linear-gradient(135deg,#0d1f17,#34d399)"></span>
+                            <span class="theme-option__name">森林</span>
+                        </button>
+                        <button type="button" class="theme-option" data-theme="sunset" onclick="setTheme('sunset')">
+                            <span class="theme-option__color" style="background:linear-gradient(135deg,#1a0a1a,#f472b6)"></span>
+                            <span class="theme-option__name">日落</span>
+                        </button>
+                        <button type="button" class="theme-option" data-theme="light" onclick="setTheme('light')">
+                            <span class="theme-option__color" style="background:linear-gradient(135deg,#f8fafc,#3b82f6)"></span>
+                            <span class="theme-option__name">浅色</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <form method="POST" action="/logout" style="display:inline;">
+                <button type="submit" class="navbar__link navbar__link--muted" style="background:none;border:none;cursor:pointer;font:inherit;padding:6px 10px;">退出</button>
+            </form>
         </div>
     </nav>
 
@@ -34,11 +66,21 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- 视频源模态容器 -->
-    <div id="sources-modal-overlay" class="modal-overlay" style="display:none;"></div>
+    <div id="sources-modal-overlay" class="modal-overlay" style="display:none;"
+         onclick="if(event.target===this)closeModal()" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal">
+            <div class="modal__header">
+                <h3 class="modal__title" id="modal-title">视频源</h3>
+                <button type="button" class="modal__close" onclick="closeModal()" aria-label="关闭">&times;</button>
+            </div>
+            <div class="modal__body" id="sources-modal-body"></div>
+        </div>
+    </div>
 
     <script src="/static/htmx.min.js"></script>
     <script defer src="/static/alpine.min.js"></script>
-    <script src="/static/app.js?v=1"></script>
+    <script src="/static/common.js?v=2"></script>
+    <script src="/static/app.js?v=5"></script>
 
     <!-- 页面专属脚本 -->
     {{block "scripts" .}}{{end}}

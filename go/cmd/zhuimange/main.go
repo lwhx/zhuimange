@@ -6,7 +6,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"log/slog"
@@ -14,12 +14,20 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/lwhx/zhuimange/internal/auth"
+	"github.com/lwhx/zhuimange/internal/backup"
 	"github.com/lwhx/zhuimange/internal/config"
+	"github.com/lwhx/zhuimange/internal/invidious"
+	"github.com/lwhx/zhuimange/internal/notify"
+	"github.com/lwhx/zhuimange/internal/scheduler"
+	"github.com/lwhx/zhuimange/internal/source"
 	"github.com/lwhx/zhuimange/internal/store"
+	"github.com/lwhx/zhuimange/internal/syncsvc"
+	"github.com/lwhx/zhuimange/internal/tmdb"
 	"github.com/lwhx/zhuimange/internal/web/handler"
 	"github.com/lwhx/zhuimange/internal/web/middleware"
 )
@@ -28,17 +36,20 @@ func main() {
 	var portFlag = flag.Int("port", 0, "监听端口（覆盖环境变量 PORT）")
 	flag.Parse()
 
-	// baseDir 通常是仓库根（go/ 的上一级），用于定位 data 目录
-	baseDir := filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
-	// 开发时直接 go run，baseDir 取当前工作区的上级
-	if _, err := os.Stat(filepath.Join(baseDir, "data")); os.IsNotExist(err) {
-		// 尝试 go/ 的上一级（仓库根）
-		cwd, _ := os.Getwd()
-		parent := filepath.Dir(cwd)
-		if _, err := os.Stat(filepath.Join(parent, "data")); err == nil {
-			baseDir = parent
-		}
+	// baseDir 优先使用当前工作目录的上级（仓库根），再退回到可执行文件位置。
+	baseDir, _ := os.Getwd()
+	if baseDir != "" {
+		baseDir = filepath.Dir(baseDir)
 	}
+	if baseDir == "" {
+		baseDir = filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
+	}
+	if _, err := os.Stat(filepath.Join(baseDir, "data")); os.IsNotExist(err) {
+		baseDir = filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
+	}
+
+	// 加载 .env 文件（环境变量优先级高于 .env）
+	config.LoadEnvFile(baseDir)
 
 	// 加载配置
 	cfg, err := config.Load(baseDir)
@@ -75,13 +86,22 @@ func main() {
 	// 初始化认证
 	authenticator := auth.New(st, cfg.SecretKey, cfg.AuthSessionDays)
 
-	// 初始化首次密码（若未设置）
-	if err := initPasswordIfNeeded(ctx, st); err != nil {
-		slog.Warn("初始化密码失败（可能已设置）", "error", err)
+	// 初始化首次密码（仅在未设置时生成随机密码）
+	if err := initPasswordIfNeeded(ctx, st, baseDir); err != nil {
+		slog.Warn("初始化密码失败", "error", err)
 	}
 
 	// 限流器：200 请求/分钟（与 Python 版一致）
 	limiter := middleware.NewRateLimiter(200, time.Minute)
+
+	// 初始化调度器依赖并启动自动同步与定时备份
+	invidiousClient := invidious.New(cfg, st)
+	tmdbClient := tmdb.New(cfg)
+	finder := source.NewFinder(cfg, st, invidiousClient)
+	syncService := syncsvc.NewService(cfg, st, tmdbClient, finder)
+	syncQueue := syncsvc.NewQueue(st, syncService)
+	backupService := backup.NewService(st)
+	scheduler.New(st, syncQueue, notify.NewTelegram(st), backupService).Start(ctx)
 
 	// 路由（含静态文件服务）
 	mux := handler.NewRouter(st, authenticator, limiter, cfg)
@@ -118,36 +138,40 @@ func main() {
 	slog.Info("服务已停止")
 }
 
-// generateRandomPassword 生成 16 字节随机密码（hex 编码）。
+// generateRandomPassword 生成 URL-safe 随机密码（对齐 Python secrets.token_urlsafe(12)）。
 func generateRandomPassword() string {
-	b := make([]byte, 16)
+	b := make([]byte, 12)
 	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// initPasswordIfNeeded 首次启动时若未设置密码，生成随机密码并打印到日志。
-// 与 Python 版 _consume_initial_password 机制一致。
-func initPasswordIfNeeded(ctx context.Context, st *store.Store) error {
-	existing, err := st.GetSetting(ctx, "auth_password", "")
-	if err != nil {
-		return err
+// initPasswordIfNeeded 仅在 auth_password 未设置（首次启动）时初始化密码。
+// 对齐 Python _init_default_password：生成随机密码并写入 data/.initial_password 兜底文件，
+// 已有密码绝不覆盖（避免重启覆盖用户修改过的密码）。
+func initPasswordIfNeeded(ctx context.Context, st *store.Store, baseDir string) error {
+	stored, _ := st.GetSetting(ctx, "auth_password", "")
+	if strings.TrimSpace(stored) != "" {
+		return nil // 已有密码，跳过
 	}
-	if existing != "" {
-		return nil
-	}
-	// 生成随机密码
-	pwd := generateRandomPassword()
-	hash, err := auth.HashPassword(pwd)
+
+	// 首次启动：生成随机密码（对齐 Python secrets.token_urlsafe(12)）
+	password := generateRandomPassword()
+	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return err
 	}
 	if err := st.SetSetting(ctx, "auth_password", hash); err != nil {
 		return err
 	}
-	slog.Info("========================================")
-	slog.Info("首次启动：已生成随机访问密码", "password", pwd)
-	slog.Info("请记录此密码，登录后可在设置页修改")
-	slog.Info("========================================")
+
+	slog.Warn("已生成随机初始密码，请立即登录并在设置中修改！此密码仅显示一次", "password", password)
+
+	// 兜底留存：写入 data/.initial_password（仅属主可读）
+	secretFile := filepath.Join(baseDir, "data", ".initial_password")
+	_ = os.MkdirAll(filepath.Dir(secretFile), 0o755)
+	if err := os.WriteFile(secretFile, []byte(password), 0o600); err != nil {
+		slog.Warn("写入初始密码兜底文件失败", "error", err)
+	}
 	return nil
 }
 

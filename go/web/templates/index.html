@@ -13,6 +13,32 @@
     <div id="search-results" class="search-results"></div>
 </div>
 
+<!-- 手动添加按钮 -->
+<div style="margin-bottom: 16px;">
+    <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">✏️ 手动添加动漫</button>
+</div>
+
+<!-- 手动添加表单 -->
+<div id="manual-add-form" class="manual-add-form" style="display:none;">
+    <h3 style="margin-bottom:12px;font-size:1rem;">手动添加动漫</h3>
+    <div class="form-group">
+        <label>动漫名称 *</label>
+        <input type="text" id="manual-title" placeholder="例: 斗破苍穹" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+    </div>
+    <div class="form-group">
+        <label>总集数</label>
+        <input type="number" id="manual-total-ep" placeholder="例: 24" min="0" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+    </div>
+    <div class="form-group">
+        <label>别名（逗号分隔）</label>
+        <input type="text" id="manual-aliases" placeholder="例: BTTH, Battle Through the Heavens" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn--primary btn--sm" onclick="submitManualAdd(this)">添加</button>
+        <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">取消</button>
+    </div>
+</div>
+
 <!-- 动漫卡片网格 -->
 {{if .Data.Animes}}
 <div class="anime-grid">

@@ -1,54 +1,187 @@
 {{define "content"}}
 {{with .Data.Anime}}
 <div class="anime-detail">
-    <div>
+    <div class="anime-detail__poster">
         {{if .PosterURL}}
-        <img class="anime-detail__poster" src="{{proxyImg .PosterURL $.Data.IsHTTPS}}" alt="{{.TitleCN}}">
+        <img src="{{proxyImg .PosterURL $.Data.IsHTTPS}}" alt="{{.TitleCN}}">
         {{else}}
-        <div style="aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;background:var(--bg-tertiary);border-radius:var(--radius-md);font-size:4rem;opacity:0.3;">🎬</div>
+        <div style="width:100%;aspect-ratio:2/3;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;font-size:3rem;border-radius:var(--radius-md);">🎬</div>
         {{end}}
     </div>
-    <div>
+
+    <div class="anime-detail__info" data-anime-id="{{.ID}}">
         <div class="anime-detail__headline">
             <div>
+                <a href="/" class="anime-detail__back">‹ 返回首页</a>
                 <h1 class="anime-detail__title">{{.TitleCN}}</h1>
-                {{if .TitleEN}}<p style="color:var(--text-muted);font-size:0.9rem;">{{.TitleEN}}</p>{{end}}
+            </div>
+            <button type="button" class="btn btn--primary" id="continue-watch-btn"
+                onclick="continueWatching({{.ID}})"
+                {{if not $.Data.NextEpisode}}disabled{{end}}>
+                {{if $.Data.NextEpisode}}▶ 继续看第{{$.Data.NextEpisode}}集{{else}}✓ 已追完{{end}}
+            </button>
+        </div>
+
+        {{if .TitleEN}}
+        <div style="color:var(--text-muted);font-size:0.9rem;margin-top:-8px;">{{.TitleEN}}</div>
+        {{end}}
+
+        <div class="anime-detail__meta">
+            {{if .AirDate}}<span>📅 {{.AirDate}}</span>{{end}}
+            <span>📺 <strong>{{$.Data.EpisodeCount}}</strong> 集</span>
+            <span>👁️ 已看 <strong id="progress-text">{{.WatchedEp}}/{{$.Data.EpisodeCount}}</strong></span>
+            {{if eq .Status "Returning Series"}}<span>🟢 连载中</span>
+            {{else if eq .Status "Ended"}}<span>🔴 已完结</span>
+            {{else if .Status}}<span>⚪ {{.Status}}</span>{{end}}
+        </div>
+
+        <!-- 进度条 -->
+        <div style="margin-top:6px;">
+            <div style="height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden;">
+                <div id="progress-fill" style="height:100%;background:var(--accent);width:{{if $.Data.EpisodeCount}}{{ratioPercent .WatchedEp $.Data.EpisodeCount}}{{else}}0{{end}}%;transition:width 0.3s;"></div>
             </div>
         </div>
-        <div class="anime-detail__meta">
-            {{if .AirDate}}首播 {{.AirDate}} · {{end}}
-            {{$.Data.EpisodeCount}} 集 · 已看 {{.WatchedEp}} 集
-            {{if .Status}} · {{.Status}}{{end}}
-        </div>
+
         {{if .Overview}}
-        <p class="anime-detail__overview">{{.Overview}}</p>
+        <p style="margin-top:12px;color:var(--text-secondary);font-size:0.9rem;line-height:1.6;">{{.Overview}}</p>
         {{end}}
-        <div class="anime-detail__actions">
-            <span class="badge badge--info">视频源 {{$.Data.SourceCount}}</span>
+
+        <!-- 别名标签 -->
+        <div id="alias-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+            {{range $.Data.Aliases}}<span style="padding:3px 10px;background:var(--bg-input);border-radius:var(--radius-xl);font-size:0.78rem;color:var(--text-muted);">{{.}}</span>{{end}}
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="anime-detail__actions" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;">
+            <button type="button" class="btn btn--primary btn--sm" id="sync-btn" onclick="syncAnime({{.ID}}, 'incremental')">⚡ 同步视频源</button>
+            <button type="button" class="btn btn--secondary btn--sm" id="full-sync-btn" onclick="syncAnime({{.ID}}, 'full')">♻ 全量刷新</button>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="toggleSection('progress-section')">📊 更新进度</button>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="toggleSection('rules-section')">⚙️ 搜索规则</button>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="toggleSection('alias-section')">🏷️ 管理别名</button>
+            <button type="button" class="btn btn--danger btn--sm" onclick="deleteAnime({{.ID}})">🗑️ 删除</button>
+        </div>
+
+        <!-- 同步进度卡片 -->
+        <div id="sync-progress" style="display:none;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-md);">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span id="sync-stage" style="font-size:0.85rem;">准备同步</span>
+                <span id="sync-percent" style="font-size:0.85rem;font-weight:600;">0%</span>
+            </div>
+            <div style="height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden;">
+                <div id="sync-fill" style="height:100%;background:var(--accent);width:0%;transition:width 0.3s;"></div>
+            </div>
+            <div id="sync-text" style="margin-top:6px;font-size:0.8rem;color:var(--text-muted);">等待任务创建...</div>
+        </div>
+
+        <!-- 快速更新进度 -->
+        <div id="progress-section" style="display:none;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-md);">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <label style="font-size:0.85rem;color:var(--text-secondary);">看到第</label>
+                <input type="number" id="progress-input" value="{{.WatchedEp}}" min="0" max="{{$.Data.EpisodeCount}}"
+                    style="width:80px;padding:6px 8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+                <label style="font-size:0.85rem;color:var(--text-secondary);">集</label>
+                <button type="button" class="btn btn--primary btn--sm" onclick="updateProgress({{.ID}}, this)">更新</button>
+            </div>
+        </div>
+
+        <!-- 搜索规则 -->
+        <div id="rules-section" style="display:none;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-md);">
+            <h4 style="margin-bottom:8px;font-size:0.9rem;">搜索规则</h4>
+            <div style="margin-bottom:6px;">
+                <label style="font-size:0.8rem;color:var(--text-muted);">允许关键词（逗号分隔）</label>
+                <input type="text" id="rule-allow-keywords" style="width:100%;padding:6px;margin-top:2px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);"
+                    value="{{ruleList $.Data.Rules.AllowKeywords}}">
+            </div>
+            <div style="margin-bottom:6px;">
+                <label style="font-size:0.8rem;color:var(--text-muted);">屏蔽关键词（逗号分隔）</label>
+                <input type="text" id="rule-deny-keywords" style="width:100%;padding:6px;margin-top:2px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);"
+                    value="{{ruleList $.Data.Rules.DenyKeywords}}">
+            </div>
+            <div style="margin-bottom:6px;">
+                <label style="font-size:0.8rem;color:var(--text-muted);">允许频道 ID（逗号分隔）</label>
+                <input type="text" id="rule-allow-channels" style="width:100%;padding:6px;margin-top:2px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);"
+                    value="{{ruleList $.Data.Rules.AllowChannels}}">
+            </div>
+            <div style="margin-bottom:8px;">
+                <label style="font-size:0.8rem;color:var(--text-muted);">屏蔽频道 ID（逗号分隔）</label>
+                <input type="text" id="rule-deny-channels" style="width:100%;padding:6px;margin-top:2px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);"
+                    value="{{ruleList $.Data.Rules.DenyChannels}}">
+            </div>
+            <button type="button" class="btn btn--primary btn--sm" onclick="saveRules({{.ID}}, this)">保存规则</button>
+        </div>
+
+        <!-- 别名管理 -->
+        <div id="alias-section" style="display:none;margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:var(--radius-md);">
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="alias-input" placeholder="输入新别名"
+                    style="flex:1;padding:6px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+                <button type="button" class="btn btn--primary btn--sm" onclick="addAlias({{.ID}}, this)">添加</button>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- 集数列表 -->
-<div class="page-header">
-    <h2 class="page-header__title">📺 集数</h2>
-</div>
-{{if $.Data.Episodes}}
-<div class="episodes-grid">
-    {{range $.Data.Episodes}}
-    <div class="episode-item {{if .Watched}}episode-item--watched{{end}}"
-         onclick="markWatched({{$.Data.Anime.ID}}, {{.AbsoluteNum}})"
-         title="第 {{.AbsoluteNum}} 集{{if .Title}} - {{.Title}}{{end}}{{if .AirDate}} ({{.AirDate}}){{end}}">
-        {{.AbsoluteNum}}
+<div style="margin-top:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2 style="font-size:1.1rem;">集数列表</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="color:var(--text-muted);font-size:0.85rem;">{{$.Data.UnwatchedCount}} 集未看</span>
+        </div>
+    </div>
+
+    {{if $.Data.Episodes}}
+    <!-- 筛选 + 搜索 -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn--sm btn--secondary ep-filter active" data-filter="all" onclick="setEpisodeFilter('all')">全部</button>
+            <button class="btn btn--sm btn--secondary ep-filter" data-filter="unwatched" onclick="setEpisodeFilter('unwatched')">未看</button>
+            <button class="btn btn--sm btn--secondary ep-filter" data-filter="watched" onclick="setEpisodeFilter('watched')">已看</button>
+            <button class="btn btn--sm btn--secondary ep-filter" data-filter="with_sources" onclick="setEpisodeFilter('with_sources')">有源</button>
+            <button class="btn btn--sm btn--secondary ep-filter" data-filter="without_sources" onclick="setEpisodeFilter('without_sources')">无源</button>
+        </div>
+        <input type="search" id="episode-search" placeholder="搜索集数..." oninput="filterEpisodes()"
+            style="padding:4px 8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);font-size:0.85rem;width:160px;">
+    </div>
+    <div id="episode-filter-empty" style="display:none;text-align:center;padding:24px;color:var(--text-muted);">没有符合条件的集数</div>
+
+    <div class="episodes-grid" id="episodes-grid">
+        {{range $.Data.Episodes}}
+        <div class="episode-item {{if .Watched}}episode-item--watched{{end}}"
+             data-ep="{{.AbsoluteNum}}"
+             data-watched="{{if .Watched}}1{{else}}0{{end}}"
+             data-sources="{{.SourceCount}}"
+             data-title="{{if .Title}}{{.Title}}{{else}}第{{.AbsoluteNum}}集{{end}}">
+            <div class="episode-item__num">{{if .Watched}}✓{{else}}{{.AbsoluteNum}}{{end}}</div>
+            <div class="episode-item__info">
+                <div class="episode-item__title">{{if .Title}}{{.Title}}{{else}}第{{.AbsoluteNum}}集{{end}}</div>
+                <div class="episode-item__date">
+                    {{if .AirDate}}{{.AirDate}}{{end}}
+                    {{if gt .SourceCount 0}} · {{.SourceCount}} 个源{{end}}
+                </div>
+            </div>
+            <div class="episode-item__actions">
+                <button class="btn btn--sm btn--secondary" onclick="event.stopPropagation();openSources({{$.Data.Anime.ID}}, {{.AbsoluteNum}})" title="查看视频源">🎬</button>
+                {{if .Watched}}
+                <button class="btn btn--sm btn--secondary" data-role="toggle-watched" onclick="event.stopPropagation();markUnwatched({{$.Data.Anime.ID}}, {{.AbsoluteNum}}, this)" title="标记未看">↩️</button>
+                {{else}}
+                <button class="btn btn--sm btn--success" data-role="toggle-watched" onclick="event.stopPropagation();markWatched({{$.Data.Anime.ID}}, {{.AbsoluteNum}}, this)" title="标记已看">✓</button>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{else}}
+    <div style="text-align:center;padding:32px;">
+        <div style="font-size:3rem;opacity:0.3;">📋</div>
+        <div style="margin-top:8px;color:var(--text-muted);">暂无集数信息</div>
+        <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;">尝试同步视频源以获取集数数据</div>
     </div>
     {{end}}
 </div>
-{{else}}
-<div class="empty-state">
-    <div class="empty-state__icon">📭</div>
-    <div class="empty-state__title">暂无集数数据</div>
-    <p>同步引擎将在阶段 3 实现后自动获取集数</p>
-</div>
 {{end}}
 {{end}}
+
+{{define "scripts"}}
+<script src="/static/detail.js?v=9"></script>
 {{end}}

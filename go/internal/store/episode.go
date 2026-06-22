@@ -85,10 +85,13 @@ func (s *Store) ListEpisodes(ctx context.Context, animeID int64) ([]*model.Episo
 	return list, rows.Err()
 }
 
-// FilterAiredEpisodes 过滤已开播集数（air_date 为空或早于等于 today）。
+// FilterAiredEpisodes 过滤已开播集数。
+// 注意：此处采用 Python 版 filter_aired_episodes 的严格语义——
+// 仅保留 air_date 非空且 ≤ today 的集数；空 air_date 视为未排期故不返回。
+// 调用方负责对手动作品（无 TMDB）改用 ListEpisodes 全量展示。
 func (s *Store) FilterAiredEpisodes(ctx context.Context, animeID int64, today string) ([]*model.Episode, error) {
 	rows, err := s.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT %s FROM episodes WHERE anime_id = ? AND (air_date = '' OR air_date <= ?) ORDER BY absolute_num ASC`,
+		fmt.Sprintf(`SELECT %s FROM episodes WHERE anime_id = ? AND air_date != '' AND air_date <= ? ORDER BY absolute_num ASC`,
 			episodeColumns), animeID, today)
 	if err != nil {
 		return nil, err
@@ -166,10 +169,17 @@ func (s *Store) DeleteEpisodesNotInAbsoluteNums(ctx context.Context, animeID int
 	return err
 }
 
-// EpisodeIsAired 判断集数是否已开播。
+// EpisodeIsAired 判断集数是否已开播（用于标记已看/未看等操作的守卫）。
+// 语义对齐 Python episode_is_aired：
+//   - 手动作品（无 TMDB）→ 全部可见
+//   - TMDB 作品 → 仅 air_date 非空且 ≤ today 视为已开播
 func (s *Store) EpisodeIsAired(ctx context.Context, animeID int64, epNum int, today string) (bool, error) {
+	anime, err := s.GetAnime(ctx, animeID)
+	if err == nil && anime != nil && anime.IsManual() {
+		return true, nil
+	}
 	var airDate string
-	err := s.db.QueryRowContext(ctx,
+	err = s.db.QueryRowContext(ctx,
 		`SELECT air_date FROM episodes WHERE anime_id = ? AND absolute_num = ?`, animeID, epNum).Scan(&airDate)
 	if err == sql.ErrNoRows {
 		return false, nil
@@ -177,7 +187,7 @@ func (s *Store) EpisodeIsAired(ctx context.Context, animeID int64, epNum int, to
 	if err != nil {
 		return false, err
 	}
-	return airDate == "" || airDate <= today, nil
+	return airDate != "" && airDate <= today, nil
 }
 
 // EpisodeStats 返回动漫的集数统计（总数、已看数）。

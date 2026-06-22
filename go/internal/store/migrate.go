@@ -112,16 +112,17 @@ func (s *Store) applyMigration(ctx context.Context, name string) error {
 func (s *Store) seedDefaults(ctx context.Context) error {
 	// 默认设置（仅当 key 不存在时插入）
 	defaults := map[string]string{
-		"auto_sync_enabled":         "true",
-		"auto_sync_interval":        "360",
-		"match_threshold":           "50",
-		"match_recommend_threshold": "70",
-		"invidious_fallback_urls":   "[]",
+		"auto_sync_enabled":          "true",
+		"auto_sync_interval":         "360",
+		"match_threshold":            "50",
+		"match_recommend_threshold":  "70",
+		"invidious_url":              "https://yewtu.be",
+		"invidious_fallback_urls":    "[]",
 		"invidious_instance_weights": "{}",
-		"episode_sort_order":        "desc",
-		"tg_notify_enabled":         "false",
-		"tg_backup_enabled":         "false",
-		"tg_backup_interval_days":   "7",
+		"episode_sort_order":         "desc",
+		"tg_notify_enabled":          "false",
+		"tg_backup_enabled":          "false",
+		"tg_backup_interval_days":    "7",
 	}
 	for key, val := range defaults {
 		if _, err := s.db.ExecContext(ctx,

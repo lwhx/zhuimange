@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ const sessionCookieName = "zmg_session"
 type SessionData struct {
 	Authenticated bool      `json:"auth"`
 	LoginTime     time.Time `json:"login_at"`
+	Version       int       `json:"ver,omitempty"` // session 版本号，改密码后递增使旧 session 失效
 }
 
 // Authenticator 处理密码哈希与会话签发。
@@ -42,6 +44,7 @@ type Authenticator struct {
 	store       *store.Store
 	secretKey   []byte
 	sessionDays int
+	// sessionVersion 用于改密码后失效旧 session：存 DB，每次校验比对。
 }
 
 // New 创建认证器。
@@ -51,6 +54,18 @@ func New(s *store.Store, secretKey string, sessionDays int) *Authenticator {
 		secretKey:   []byte(secretKey),
 		sessionDays: sessionDays,
 	}
+}
+
+// isSecureRequest 判断请求是否通过 HTTPS（用于设置 cookie 的 Secure 标志）。
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	// 支持反向代理（Nginx/Caddy 等）
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
+		return true
+	}
+	return false
 }
 
 // HashPassword 用 bcrypt 哈希密码（cost=12，与 Python 版一致）。
@@ -71,8 +86,8 @@ func IsBcryptHash(s string) bool {
 }
 
 // Login 校验密码并签发会话 cookie。
-// 返回错误表示密码错误或系统异常。
-func (a *Authenticator) Login(ctx context.Context, w http.ResponseWriter, password string) error {
+// 返回错误表示密码错误或系统异常。r 用于判断是否 HTTPS（设置 Secure 标志）。
+func (a *Authenticator) Login(ctx context.Context, w http.ResponseWriter, r *http.Request, password string) error {
 	hash, err := a.store.GetSetting(ctx, "auth_password", "")
 	if err != nil {
 		return fmt.Errorf("读取密码设置失败: %w", err)
@@ -84,28 +99,34 @@ func (a *Authenticator) Login(ctx context.Context, w http.ResponseWriter, passwo
 		return errors.New("密码错误")
 	}
 
+	// 读取当前 session version（用于改密码后失效旧 session）
+	versionStr, _ := a.store.GetSetting(ctx, "session_version", "0")
+	version, _ := strconv.Atoi(versionStr)
+
 	// 签发会话
 	data := SessionData{
 		Authenticated: true,
 		LoginTime:     time.Now(),
+		Version:       version,
 	}
-	return a.setSession(w, data)
+	return a.setSession(w, r, data)
 }
 
-// Logout 清除会话 cookie。
-func (a *Authenticator) Logout(w http.ResponseWriter) {
+// Logout 清除会话 cookie。r 用于判断是否 HTTPS。
+func (a *Authenticator) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   isSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-// setSession 编码会话数据并用 HMAC 签名，写入 cookie。
-func (a *Authenticator) setSession(w http.ResponseWriter, data SessionData) error {
+// setSession 编码会话数据并用 HMAC 签名，写入 cookie。r 用于判断是否 HTTPS。
+func (a *Authenticator) setSession(w http.ResponseWriter, r *http.Request, data SessionData) error {
 	payload, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -120,6 +141,7 @@ func (a *Authenticator) setSession(w http.ResponseWriter, data SessionData) erro
 		Path:     "/",
 		MaxAge:   a.sessionDays * 24 * 3600,
 		HttpOnly: true,
+		Secure:   isSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	return nil
@@ -143,6 +165,12 @@ func (a *Authenticator) ValidateRequest(r *http.Request) (*SessionData, error) {
 	// 检查过期
 	expire := data.LoginTime.AddDate(0, 0, a.sessionDays)
 	if time.Now().After(expire) {
+		return nil, ErrNotAuthenticated
+	}
+	// 校验 session 版本号：改密码后 version 递增，旧 session 失效
+	currentVerStr, _ := a.store.GetSetting(r.Context(), "session_version", "0")
+	currentVer, _ := strconv.Atoi(currentVerStr)
+	if data.Version != currentVer {
 		return nil, ErrNotAuthenticated
 	}
 	return data, nil
@@ -192,5 +220,11 @@ func (a *Authenticator) ChangePassword(ctx context.Context, oldPwd, newPwd strin
 	if err != nil {
 		return fmt.Errorf("哈希密码失败: %w", err)
 	}
-	return a.store.SetSetting(ctx, "auth_password", newHash)
+	if err := a.store.SetSetting(ctx, "auth_password", newHash); err != nil {
+		return err
+	}
+	// 递增 session_version 使所有旧 session 失效（防 cookie 被盗后改密码无效）
+	verStr, _ := a.store.GetSetting(ctx, "session_version", "0")
+	ver, _ := strconv.Atoi(verStr)
+	return a.store.SetSetting(ctx, "session_version", strconv.Itoa(ver+1))
 }

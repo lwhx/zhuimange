@@ -75,7 +75,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// RateLimiter 简单的内存令牌桶限流器（按 IP）。
+// RateLimiter 简单的内存滑动窗口限流器（按 IP）。
 // 适用于个人项目，无需引入 Redis 等外部依赖。
 type RateLimiter struct {
 	mu       sync.Mutex
@@ -86,6 +86,7 @@ type RateLimiter struct {
 
 type bucket struct {
 	count    int
+	startAt  time.Time // 当前窗口起点（不随请求漂移）
 	lastSeen time.Time
 }
 
@@ -102,17 +103,21 @@ func NewRateLimiter(rate int, window time.Duration) *RateLimiter {
 }
 
 // Allow 判断 IP 是否被允许（超出则返回 false）。
+// 使用固定窗口起点：窗口从首次请求开始计时，窗口内累计计数；
+// 窗口过期后才重置——避免每次请求更新起点导致窗口永不滚动。
 func (rl *RateLimiter) Allow(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	now := time.Now()
 	b, exists := rl.visitors[ip]
-	if !exists || time.Since(b.lastSeen) > rl.window {
-		rl.visitors[ip] = &bucket{count: 1, lastSeen: time.Now()}
+	// 窗口已过期（或首次）：重置为全新窗口
+	if !exists || now.Sub(b.startAt) > rl.window {
+		rl.visitors[ip] = &bucket{count: 1, startAt: now, lastSeen: now}
 		return true
 	}
 	b.count++
-	b.lastSeen = time.Now()
+	b.lastSeen = now
 	return b.count <= rl.rate
 }
 

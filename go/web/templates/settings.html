@@ -1,0 +1,293 @@
+{{define "content"}}
+<div class="page-header">
+    <div>
+        <h1 class="page-header__title">⚙️ 系统设置</h1>
+        <p class="page-header__subtitle">配置同步参数、匹配阈值、Invidious、Telegram 推送与备份</p>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn--primary" onclick="saveSettings(this)">💾 保存设置</button>
+    </div>
+</div>
+
+<!-- 自动同步 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">⏰ 自动同步</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">启用自动同步</span>
+            <span class="settings-row__label-desc">定时自动搜索并更新视频源</span>
+        </div>
+        <div class="settings-row__control">
+            <label class="toggle">
+                <input type="checkbox" data-key="auto_sync_enabled">
+                <span class="toggle__slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">同步间隔（分钟）</span>
+            <span class="settings-row__label-desc">两次自动同步之间的间隔时间</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-key="auto_sync_interval" min="30" max="10080" style="width:120px;">
+        </div>
+    </div>
+</section>
+
+<!-- 匹配参数 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">🎯 匹配参数</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">最低匹配分数</span>
+            <span class="settings-row__label-desc">低于此分数的视频源将被过滤</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-key="match_threshold" min="0" max="100" style="width:100px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">推荐匹配分数</span>
+            <span class="settings-row__label-desc">高于此分数视为高质量匹配</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-key="match_recommend_threshold" min="0" max="100" style="width:100px;">
+        </div>
+    </div>
+</section>
+
+<!-- Invidious 配置 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">🌐 Invidious 配置</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">主实例地址</span>
+            <span class="settings-row__label-desc">视频搜索与同步的主入口，权重由下方编辑器控制</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-key="invidious_url" id="invidious-primary-url"
+                   placeholder="https://invidious.example.com" style="width:280px;" oninput="syncInvidiousWeights()">
+            <span class="invidious-weight-inline">
+                权重 <input type="number" id="invidious-primary-weight" min="1" max="100" style="width:70px;" oninput="syncInvidiousWeights()">
+            </span>
+        </div>
+    </div>
+
+    <div class="settings-row settings-row--stacked">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">备用实例列表</span>
+            <span class="settings-row__label-desc">可手动添加或删除自部署实例，每个实例独立配置权重</span>
+        </div>
+        <div class="settings-row__control settings-row__control--wide">
+            <input type="hidden" data-key="invidious_fallback_urls" id="invidious-fallback-urls">
+            <input type="hidden" data-key="invidious_instance_weights" id="invidious-instance-weights">
+            <div class="invidious-instance-editor" id="invidious-fallback-editor"></div>
+            <button type="button" class="btn btn--secondary btn--sm" onclick="addInvidiousFallbackRow()">＋ 添加备用实例</button>
+            <div class="settings-help">流量比例 = 该实例权重 / 所有实例权重之和（含主实例）。</div>
+        </div>
+    </div>
+</section>
+
+<!-- TMDB 配置 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">🎬 TMDB 配置</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">API Key</span>
+            <span class="settings-row__label-desc">用于动漫搜索、海报与集数元数据，从 themoviedb.org 获取</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-key="tmdb_api_key" placeholder="502511a5d5bfc72f..." style="width:280px;">
+        </div>
+    </div>
+</section>
+
+<!-- Telegram 推送 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">📱 Telegram 推送</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">Bot Token</span>
+            <span class="settings-row__label-desc">Telegram Bot 的 API Token</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-key="tg_bot_token" placeholder="123456:ABC-DEF..." style="width:280px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">Chat ID</span>
+            <span class="settings-row__label-desc">接收消息的聊天 ID</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="text" data-key="tg_chat_id" placeholder="-100123456789" style="width:200px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">新集推送通知</span>
+            <span class="settings-row__label-desc">同步发现新视频源时发送 Telegram 通知</span>
+        </div>
+        <div class="settings-row__control">
+            <label class="toggle">
+                <input type="checkbox" data-key="tg_notify_enabled">
+                <span class="toggle__slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">定时备份到 Telegram</span>
+            <span class="settings-row__label-desc">自动定期将备份发送到 Telegram</span>
+        </div>
+        <div class="settings-row__control">
+            <label class="toggle">
+                <input type="checkbox" data-key="tg_backup_enabled">
+                <span class="toggle__slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">备份间隔（天）</span>
+            <span class="settings-row__label-desc">每隔多少天自动发送一次备份</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="number" data-key="tg_backup_interval_days" min="1" max="30" style="width:80px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">手动备份</span>
+            <span class="settings-row__label-desc">立即发送一次备份到 Telegram</span>
+        </div>
+        <div class="settings-row__control">
+            <button type="button" class="btn btn--secondary btn--sm" onclick="telegramBackup(this)">📨 发送到 TG</button>
+        </div>
+    </div>
+</section>
+
+<!-- 备份与恢复 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">💾 备份与恢复</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">导出 JSON 备份</span>
+            <span class="settings-row__label-desc">下载所有追更数据为 JSON 文件</span>
+        </div>
+        <div class="settings-row__control">
+            <button type="button" class="btn btn--primary btn--sm" onclick="window.location.href='/api/backup/export'">📥 导出</button>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">导出 CSV</span>
+            <span class="settings-row__label-desc">下载观看进度为 CSV 表格</span>
+        </div>
+        <div class="settings-row__control">
+            <button type="button" class="btn btn--secondary btn--sm" onclick="window.location.href='/api/backup/export_csv'">📊 导出</button>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">导出 Bangumi</span>
+            <span class="settings-row__label-desc">下载 Bangumi 格式收藏列表</span>
+        </div>
+        <div class="settings-row__control">
+            <button type="button" class="btn btn--secondary btn--sm" onclick="window.location.href='/api/backup/export_bangumi'">🎁 导出</button>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">导入备份</span>
+            <span class="settings-row__label-desc">从 JSON 文件恢复数据（合并模式）</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importBackup(this)">
+            <button type="button" class="btn btn--secondary btn--sm" onclick="document.getElementById('import-file').click()">📤 选择文件</button>
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">本地备份</span>
+            <span class="settings-row__label-desc">将备份保存到服务器本地 data 目录</span>
+        </div>
+        <div class="settings-row__control">
+            <button type="button" class="btn btn--secondary btn--sm" onclick="localBackup(this)">💾 本地备份</button>
+        </div>
+    </div>
+</section>
+
+<!-- 修改密码 -->
+<section class="settings-section">
+    <h3 class="settings-section__title">🔑 访问密码</h3>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">当前密码</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="password" id="old-password" placeholder="输入当前密码" style="width:220px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">新密码</span>
+            <span class="settings-row__label-desc">至少 8 位</span>
+        </div>
+        <div class="settings-row__control">
+            <input type="password" id="new-password" placeholder="输入新密码" style="width:220px;">
+        </div>
+    </div>
+
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text"></span>
+        </div>
+        <div class="settings-row__control">
+            <button type="button" class="btn btn--secondary btn--sm" onclick="changePassword(this)">🔒 修改密码</button>
+        </div>
+    </div>
+</section>
+
+<!-- 系统信息 -->
+<section class="settings-section settings-section--muted">
+    <h3 class="settings-section__title">ℹ️ 系统信息</h3>
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">版本</span>
+        </div>
+        <div style="color:var(--text-muted);font-size:0.85rem;">Go 重构版 v1.0</div>
+    </div>
+    <div class="settings-row">
+        <div class="settings-row__label">
+            <span class="settings-row__label-text">技术栈</span>
+        </div>
+        <div style="color:var(--text-muted);font-size:0.85rem;">Go + chi + modernc.org/sqlite + html/template</div>
+    </div>
+</section>
+{{end}}
+
+{{define "scripts"}}
+<script src="/static/settings.js?v=3"></script>
+{{end}}

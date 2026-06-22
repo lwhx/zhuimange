@@ -1,31 +1,66 @@
-<div class="modal">
-    <div class="modal__header">
-        <div class="modal__title">🎬 第 {{.EpNum}} 集视频源</div>
-        <button class="modal__close" onclick="closeModal()">✕</button>
-    </div>
-    <div style="padding:16px 24px;">
-        {{if .Sources}}
-        <div style="display:flex;flex-direction:column;gap:12px;">
-            {{range .Sources}}
-            <a href="{{youtubeURL .VideoID}}" target="_blank" rel="noopener"
-               style="display:flex;gap:12px;padding:12px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border-color);transition:border-color 0.2s;">
-                <img src="{{proxyImg (thumbURL .VideoID) $.IsHTTPS}}" alt="" style="width:120px;height:67px;object-fit:cover;border-radius:4px;background:var(--bg-tertiary);" loading="lazy">
-                <div style="flex:1;min-width:0;">
-                    <div style="font-weight:600;font-size:0.9rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{.Title}}</div>
-                    <div style="font-size:0.8rem;color:var(--text-muted);">
-                        {{.ChannelName}} · {{formatDuration .Duration}} · {{formatViews .ViewCount}}
-                    </div>
-                    <div style="font-size:0.75rem;color:var(--accent);margin-top:4px;">匹配分 {{printf "%.1f" .MatchScore}}</div>
-                </div>
-            </a>
-            {{end}}
-        </div>
-        {{else}}
-        <div class="empty-state">
-            <div class="empty-state__icon">🔍</div>
-            <div class="empty-state__title">暂无视频源</div>
-            <p>该集尚未同步，同步引擎在阶段 3 实现后可搜索</p>
-        </div>
-        {{end}}
+{{if .Sources}}
+<div class="source-modal-toolbar">
+    <span class="source-modal-toolbar__title">
+        {{.AnimeTitle}} · 第{{.EpNum}}集 · 共 {{len .Sources}} 个视频源
+    </span>
+    <div class="source-modal-toolbar__actions" data-anime-id="{{.AnimeID}}" data-ep-num="{{.EpNum}}">
+        <button type="button" class="btn btn--secondary btn--sm" data-action="check-health">🔎 检测可用性</button>
+        <button type="button" class="btn btn--secondary btn--sm" data-action="find-sources" data-force="1">🔄 重新搜索</button>
     </div>
 </div>
+
+{{range .Sources}}
+<div class="source-item{{if or (eq .HealthStatus "invalid") (not .IsValid)}} source-item--invalid{{end}}">
+    <a href="{{youtubeURL .VideoID}}" target="_blank" rel="noopener" class="source-item__thumb-wrap">
+        <img class="source-item__thumb"
+             src="{{proxyImg (thumbURL .VideoID) $.IsHTTPS}}"
+             alt="{{.Title}}" loading="lazy">
+        <span class="source-item__thumb-play">▶</span>
+    </a>
+    <div class="source-item__info">
+        <div class="source-item__title">{{.Title}}</div>
+        <div class="source-item__meta">
+            <span>📺 {{if .ChannelName}}{{.ChannelName}}{{else}}未知频道{{end}}</span>
+            <span>⏱️ {{formatDuration .Duration}}</span>
+            <span>👁️ {{formatViews .ViewCount}}</span>
+            {{if .PublishedAt}}<span>📅 {{.PublishedAt}}</span>{{end}}
+            {{if .LastCheckedAt}}<span>🕒 {{formatTime .LastCheckedAt}}</span>{{end}}
+        </div>
+        {{if .LastCheckError}}
+        <div class="source-item__error">{{.LastCheckError}}</div>
+        {{end}}
+    </div>
+
+    <div class="source-item__badges">
+        <span class="source-health-badge source-health-badge--{{if .HealthStatus}}{{.HealthStatus}}{{else}}unknown{{end}}">
+            {{if eq .HealthStatus "available"}}可用
+            {{else if eq .HealthStatus "invalid"}}已失效
+            {{else if eq .HealthStatus "error"}}疑似异常
+            {{else}}未检测{{end}}
+        </span>
+        <div class="source-item__score
+            {{if ge .MatchScore 70.0}}source-item__score--high
+            {{else if ge .MatchScore 50.0}}source-item__score--medium
+            {{else}}source-item__score--low{{end}}">
+            {{printf "%.0f" .MatchScore}}分
+        </div>
+    </div>
+
+    <a href="{{youtubeURL .VideoID}}" target="_blank" rel="noopener" class="source-item__link">
+        ▶ 播放
+    </a>
+</div>
+{{end}}
+
+{{else}}
+<div class="source-empty-state">
+    <div class="source-empty-state__icon">🔍</div>
+    <div class="source-empty-state__title">这一集还没有可用视频源</div>
+    <div class="source-empty-state__desc">可以立即搜索，或先同步整部动漫来补齐更多集数。</div>
+    <button type="button" class="btn btn--primary btn--sm"
+            data-anime-id="{{.AnimeID}}" data-ep-num="{{.EpNum}}"
+            data-action="find-sources" data-force="0">
+        🔍 搜索视频源
+    </button>
+</div>
+{{end}}

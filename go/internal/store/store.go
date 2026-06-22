@@ -33,10 +33,13 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 	}
 
 	// SQLite 连接参数：
-	// _pragma=journal_mode(WAL)  — WAL 模式，读写并发
-	// _pragma=busy_timeout(30000) — 锁等待 30 秒，避免并发写立即失败
-	// _pragma=foreign_keys(ON)   — 开启外键约束（级联删除）
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(30000)&_pragma=foreign_keys(ON)", dbPath)
+	// _pragma=journal_mode(WAL)     — WAL 模式，读写并发
+	// _pragma=busy_timeout(30000)  — 锁等待 30 秒，避免并发写立即失败
+	// _pragma=foreign_keys(ON)     — 开启外键约束（级联删除）
+	// _pragma=synchronous(NORMAL)  — WAL 下 NORMAL 足够安全，减少 fsync 提升写性能
+	// _pragma=cache_size(-20000)   — 20MB 内存页缓存，减少磁盘读
+	// _pragma=mmap_size(268435456) — 256MB mmap，提升大表扫描速度
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(30000)&_pragma=foreign_keys(ON)&_pragma=synchronous(NORMAL)&_pragma=cache_size(-20000)&_pragma=mmap_size(268435456)", dbPath)
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

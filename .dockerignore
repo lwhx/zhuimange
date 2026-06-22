@@ -3,13 +3,20 @@
 .gitignore
 .gitattributes
 
-# Python
+# Python（源码仍在仓库，但 Docker 不构建 Python 版）
 __pycache__
 *.py[cod]
 *.egg-info
 .venv
 venv
 env
+
+# Go 构建产物和缓存
+go/zhuimange
+go/zhuimange.exe
+go/*.exe
+go/build
+go/vendor/
 
 # IDE
 .idea
@@ -25,9 +32,6 @@ htmlcov/
 # Documentation
 *.md
 LICENSE
-FIGMA_STYLE_LIBRARY.md
-COLOR_PALETTE_SPEC.md
-DEVELOPMENT.md
 
 # Project files
 .env
@@ -36,3 +40,7 @@ logs/
 docker-compose*.yml
 .dockerignore
 .github/
+
+# 本地运行脚本
+run_with_proxy.py
+push_branch.ps1

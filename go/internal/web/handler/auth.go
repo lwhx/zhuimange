@@ -13,13 +13,18 @@ func (h *AppHandlers) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	auth.IssueCSRFCookie(w)
+	auth.IssueCSRFCookie(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	errorBlock := ""
-	if r.URL.Query().Get("error") == "1" {
+	switch r.URL.Query().Get("error") {
+	case "1":
 		errorBlock = `<div class="error">密码错误</div>`
+	case "csrf":
+		errorBlock = `<div class="error">会话已失效，请重新登录</div>`
 	}
-	_, _ = w.Write([]byte(strings.Replace(loginPageHTML, "{{ERROR_BLOCK}}", errorBlock, 1)))
+	page := strings.Replace(loginPageHTML, "{{ERROR_BLOCK}}", errorBlock, 1)
+	_, _ = w.Write([]byte(page))
 }
 
 // loginSubmit 处理登录表单提交。
@@ -33,16 +38,16 @@ func (h *AppHandlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=1", http.StatusFound)
 		return
 	}
-	if err := h.auth.Login(r.Context(), w, password); err != nil {
+	if err := h.auth.Login(r.Context(), w, r, password); err != nil {
 		http.Redirect(w, r, "/login?error=1", http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-// logout 登出并重定向到登录页。
+// logout 登出并重定向到登录页。改为 POST 防 CSRF 登出 DoS。
 func (h *AppHandlers) logout(w http.ResponseWriter, r *http.Request) {
-	h.auth.Logout(w)
+	h.auth.Logout(w, r)
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
@@ -78,7 +83,8 @@ const loginPageHTML = `<!DOCTYPE html>
   <div class="login-card">
     <h1>📚 追漫阁</h1>
     <p class="subtitle">个人追更管理平台</p>{{ERROR_BLOCK}}
-    <form method="POST" action="/login">
+    <form method="POST" action="/login" onsubmit="return fillCsrfToken()">
+      <input type="hidden" id="csrf_token" name="csrf_token" value="">
       <div class="form-group">
         <label>访问密码</label>
         <input type="password" name="password" placeholder="输入访问密码" autofocus>
@@ -86,6 +92,20 @@ const loginPageHTML = `<!DOCTYPE html>
       <button type="submit" class="btn">登录</button>
     </form>
   </div>
+<script>
+function getCookie(name) {
+  const value = '; ' + document.cookie;
+  const parts = value.split('; ' + name + '=');
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return '';
+}
+function fillCsrfToken() {
+  const token = getCookie('zmg_csrf');
+  const el = document.getElementById('csrf_token');
+  if (el) el.value = token;
+  return true;
+}
+document.addEventListener('DOMContentLoaded', fillCsrfToken);
+</script>
 </body>
 </html>`
-
