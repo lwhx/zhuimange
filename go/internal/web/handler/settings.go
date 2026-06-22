@@ -185,4 +185,3 @@ func formatFloat(v float64) string {
 	bytes, _ := json.Marshal(v)
 	return string(bytes)
 }
-

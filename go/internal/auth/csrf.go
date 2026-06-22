@@ -72,7 +72,7 @@ func IssueCSRFCookie(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		MaxAge:   3600 * 24,
-		HttpOnly: false,    // 前端 JS 需读取
+		HttpOnly: false, // 前端 JS 需读取
 		Secure:   isSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})

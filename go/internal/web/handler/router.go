@@ -77,7 +77,7 @@ func NewRouter(st *store.Store, a *auth.Authenticator, limiter *middleware.RateL
 
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
-	r.Use(chimw.Recoverer) // panic 恢复 + 日志
+	r.Use(chimw.Recoverer)   // panic 恢复 + 日志
 	r.Use(chimw.Compress(5)) // gzip 压缩（CSS/JS/HTML/JSON）
 	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.RateLimitMiddleware(limiter))

@@ -6,22 +6,22 @@ import (
 
 // StatsSummary 表示统计页概要数据。
 type StatsSummary struct {
-	AnimeCount        int              `json:"anime_count"`
-	EpisodeCount      int              `json:"episode_count"`
-	SourceCount       int              `json:"source_count"`
-	WatchedCount      int              `json:"watched_count"`
-	ContinuingCount   int              `json:"continuing_count"`
-	EndedCount        int              `json:"ended_count"`
-	RecentSyncSuccess int              `json:"recent_sync_success"`
-	RecentSyncError   int              `json:"recent_sync_error"`
+	AnimeCount        int `json:"anime_count"`
+	EpisodeCount      int `json:"episode_count"`
+	SourceCount       int `json:"source_count"`
+	WatchedCount      int `json:"watched_count"`
+	ContinuingCount   int `json:"continuing_count"`
+	EndedCount        int `json:"ended_count"`
+	RecentSyncSuccess int `json:"recent_sync_success"`
+	RecentSyncError   int `json:"recent_sync_error"`
 	// 扩展字段（对齐 Python get_watch_stats）
-	EstimatedHours   float64           `json:"estimated_hours"`
-	CompletionRate   float64           `json:"completion_rate"`
-	StatusDist       []StatusDistItem  `json:"status_dist"`
-	TopProgress      []ProgressItem    `json:"top_progress"`
-	MostPending      []PendingItem     `json:"most_pending"`
-	SyncActivity     []SyncActivityDay `json:"sync_activity"`
-	MaxSyncCount     int               `json:"max_sync_count"`
+	EstimatedHours float64           `json:"estimated_hours"`
+	CompletionRate float64           `json:"completion_rate"`
+	StatusDist     []StatusDistItem  `json:"status_dist"`
+	TopProgress    []ProgressItem    `json:"top_progress"`
+	MostPending    []PendingItem     `json:"most_pending"`
+	SyncActivity   []SyncActivityDay `json:"sync_activity"`
+	MaxSyncCount   int               `json:"max_sync_count"`
 }
 
 // StatusDistItem 表示状态分布条目。
@@ -33,11 +33,11 @@ type StatusDistItem struct {
 
 // ProgressItem 表示完成度排行条目。
 type ProgressItem struct {
-	ID            int64   `json:"id"`
-	TitleCN       string  `json:"title_cn"`
-	EpCount       int     `json:"ep_count"`
-	WatchedCount  int     `json:"watched_count"`
-	Pct           float64 `json:"pct"`
+	ID           int64   `json:"id"`
+	TitleCN      string  `json:"title_cn"`
+	EpCount      int     `json:"ep_count"`
+	WatchedCount int     `json:"watched_count"`
+	Pct          float64 `json:"pct"`
 }
 
 // PendingItem 表示待追条目。

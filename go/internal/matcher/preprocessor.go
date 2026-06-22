@@ -31,10 +31,10 @@ func init() {
 // 否则会在已正确的文本上重复替换（如 "斗破苍" 会命中 "斗破苍穹"）。
 var homophoneMap = map[string]string{
 	// 常见同音字替换（UP 主规避版权）
-	"豆破": "斗破",
-	"窗穹": "苍穹",
+	"豆破":  "斗破",
+	"窗穹":  "苍穹",
 	"吃星空": "吞噬星空",
-	"仙尼": "仙逆",
+	"仙尼":  "仙逆",
 }
 
 var episodePatterns = []*regexp.Regexp{

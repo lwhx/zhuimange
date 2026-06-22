@@ -46,10 +46,8 @@ func AuthMiddleware(a *auth.Authenticator, allowedPaths []string) func(http.Hand
 				}
 				return
 			}
-
-			// 把会话存入 context 供 handler 使用
-			ctx := WithSession(r.Context(), session)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			_ = session // 认证通过即可，session 数据当前 handler 未读取
+			next.ServeHTTP(w, r)
 		})
 	}
 }

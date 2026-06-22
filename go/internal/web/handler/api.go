@@ -375,4 +375,3 @@ func (h *AppHandlers) proxyAllowedHosts(ctx context.Context) map[string]bool {
 	}
 	return hosts
 }
-

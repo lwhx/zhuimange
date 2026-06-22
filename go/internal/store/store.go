@@ -10,6 +10,7 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	_ "modernc.org/sqlite"
@@ -28,7 +29,7 @@ type Store struct {
 func Open(ctx context.Context, dbPath string) (*Store, error) {
 	// 确保父目录存在
 	dir := filepath.Dir(dbPath)
-	if err := mkdirAll(dir); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建数据库目录失败: %w", err)
 	}
 
@@ -67,9 +68,6 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 	slog.Info("数据库初始化完成", "path", dbPath)
 	return s, nil
 }
-
-// DB 暴露底层 *sql.DB 供需要直接执行查询的场景使用（如事务）。
-func (s *Store) DB() *sql.DB { return s.db }
 
 // Close 关闭数据库连接。
 func (s *Store) Close() error {
