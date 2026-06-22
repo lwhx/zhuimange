@@ -73,12 +73,13 @@ type Client struct {
 
 // New 创建 TMDB 客户端。
 func New(cfg *config.Config) *Client {
+	slog.Info("初始化 TMDB 客户端", "base_url", cfg.TMDBBaseURL, "api_key_set", cfg.TMDBAPIKey != "")
 	return &Client{
 		apiKey:   cfg.TMDBAPIKey,
 		baseURL:  cfg.TMDBBaseURL,
 		language: cfg.TMDBLanguage,
 		http: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
 				Proxy:               http.ProxyFromEnvironment,
 				MaxIdleConns:        10,

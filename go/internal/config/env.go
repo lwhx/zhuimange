@@ -2,22 +2,41 @@ package config
 
 import (
 	"bufio"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// LoadEnvFile 从 baseDir 下的 .env 文件加载环境变量。
-// 格式：KEY=VALUE，支持 # 注释和空行。
+// LoadEnvFile 从候选目录中查找并加载 .env 文件。
+// 依次尝试每个候选目录，找到的第一个 .env 生效。
 // 已存在的环境变量不会被覆盖（环境变量优先级高于 .env）。
-func LoadEnvFile(baseDir string) {
-	envPath := filepath.Join(baseDir, ".env")
+func LoadEnvFile(dirs ...string) {
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		envPath := filepath.Join(dir, ".env")
+		if info, err := os.Stat(envPath); err != nil || info.IsDir() {
+			continue
+		}
+		if loaded := loadEnvFromFile(envPath); loaded > 0 {
+			slog.Info("已加载 .env 文件", "path", envPath, "vars", loaded)
+			return // 找到一个生效即可
+		}
+	}
+	slog.Warn("未找到 .env 文件，请在仓库根或运行目录放置（环境变量仍可直接设置）")
+}
+
+// loadEnvFromFile 解析单个 .env 文件，返回成功加载的变量数。
+func loadEnvFromFile(envPath string) int {
 	f, err := os.Open(envPath)
 	if err != nil {
-		return // .env 不存在则跳过
+		return 0
 	}
 	defer f.Close()
 
+	loaded := 0
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -38,7 +57,9 @@ func LoadEnvFile(baseDir string) {
 			continue
 		}
 		os.Setenv(key, value)
+		loaded++
 	}
+	return loaded
 }
 
 func trimQuotes(s string) string {
@@ -49,3 +70,4 @@ func trimQuotes(s string) string {
 	}
 	return s
 }
+

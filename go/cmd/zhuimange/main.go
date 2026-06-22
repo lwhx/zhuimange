@@ -48,20 +48,42 @@ func main() {
 		return
 	}
 
-	// baseDir 优先使用当前工作目录的上级（仓库根），再退回到可执行文件位置。
-	baseDir, _ := os.Getwd()
-	if baseDir != "" {
-		baseDir = filepath.Dir(baseDir)
+	// baseDir 是项目根目录（含 .env 和 data/）。
+	// 多候选探测：CWD、CWD 上级、可执行文件目录及其上级，挑选第一个含 .env 或 data/ 的。
+	cwd, _ := os.Getwd()
+	exeDir := filepath.Dir(os.Args[0])
+	candidates := []string{
+		cwd,
+		filepath.Dir(cwd),
+		exeDir,
+		filepath.Dir(exeDir),
+		filepath.Join(exeDir, "..", ".."),
+	}
+	baseDir := ""
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		abs, err := filepath.Abs(c)
+		if err != nil {
+			continue
+		}
+		// 含 .env 或 data/ 或 go.mod 的视为项目根
+		if fileExists(filepath.Join(abs, ".env")) ||
+			fileExists(filepath.Join(abs, "data")) ||
+			fileExists(filepath.Join(abs, "go.mod")) {
+			baseDir = abs
+			break
+		}
 	}
 	if baseDir == "" {
-		baseDir = filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
-	}
-	if _, err := os.Stat(filepath.Join(baseDir, "data")); os.IsNotExist(err) {
-		baseDir = filepath.Join(filepath.Dir(os.Args[0]), "..", "..")
+		// 兜底：用 CWD
+		baseDir = cwd
+		slog.Warn("未定位到项目根目录，使用当前工作目录作为 baseDir", "baseDir", baseDir)
 	}
 
-	// 加载 .env 文件（环境变量优先级高于 .env）
-	config.LoadEnvFile(baseDir)
+	// 加载 .env 文件（依次探测多个候选目录；环境变量优先级高于 .env）
+	config.LoadEnvFile(candidates...)
 
 	// 加载配置
 	cfg, err := config.Load(baseDir)
@@ -69,6 +91,7 @@ func main() {
 		slog.Error("加载配置失败", "error", err)
 		os.Exit(1)
 	}
+	slog.Info("项目根目录", "baseDir", baseDir, "tmdb_key_set", cfg.TMDBAPIKey != "")
 
 	// 配置日志级别
 	var level slog.Level
@@ -230,4 +253,10 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// fileExists 判断路径是否存在（文件或目录）。
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
