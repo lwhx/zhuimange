@@ -24,6 +24,11 @@ type Client struct {
 	mu    sync.Mutex
 	index int
 	state instanceState
+	// concLimit 限制对 Invidious 实例的并发请求总数。
+	// 批量同步时 syncEpisodes(6) × searchKeywordsVideos(6) = 36 并发，
+	// 单实例易触发 429 限流导致全部搜索失败（表现为"同步 0 源"）。
+	// 用全局信号量把实际并发压到安全水位。
+	concLimit chan struct{}
 }
 
 // instanceState 保存当前 Invidious 实例配置快照。
@@ -64,14 +69,20 @@ type LoadBalanceSummary struct {
 // New 创建 Invidious 客户端。
 func New(cfg *config.Config, st *store.Store) *Client {
 	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConns: 64, MaxIdleConnsPerHost: 64, IdleConnTimeout: 90 * time.Second}
+	// 并发上限：取 SourceSearchWorkers 与 4 的较小值，避免批量同步打爆实例
+	concMax := cfg.SourceSearchWorkers
+	if concMax <= 0 || concMax > 4 {
+		concMax = 4
+	}
 	client := &Client{
-		cfg:   cfg,
-		store: st,
-		http:  &http.Client{Timeout: time.Duration(cfg.InvidiousAPITimeout) * time.Second, Transport: transport},
-		state: instanceState{PrimaryURL: normalizeURL(cfg.InvidiousURL), CurrentURL: normalizeURL(cfg.InvidiousURL), InstanceWeights: map[string]int{}},
+		cfg:       cfg,
+		store:     st,
+		http:      &http.Client{Timeout: time.Duration(cfg.InvidiousAPITimeout) * time.Second, Transport: transport},
+		state:     instanceState{PrimaryURL: normalizeURL(cfg.InvidiousURL), CurrentURL: normalizeURL(cfg.InvidiousURL), InstanceWeights: map[string]int{}},
+		concLimit: make(chan struct{}, concMax),
 	}
 	client.refreshWithContext(context.Background())
-	slog.Info("Invidious 客户端初始化", "current_url", client.state.CurrentURL)
+	slog.Info("Invidious 客户端初始化", "current_url", client.state.CurrentURL, "conc_limit", concMax)
 	return client
 }
 
@@ -203,6 +214,14 @@ func (c *Client) refreshWithContext(ctx context.Context) error {
 
 // request 发送 API 请求，失败时逐个切换实例重试。
 func (c *Client) request(ctx context.Context, endpoint string, target any) error {
+	// 全局并发限制：批量同步时多 worker 叠加会打爆 Invidious 实例触发限流，
+	// 用信号量把实际并发请求压到安全水位（默认 4）。
+	select {
+	case c.concLimit <- struct{}{}:
+		defer func() { <-c.concLimit }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	if err := c.RefreshInstances(ctx); err != nil {
 		slog.Warn("刷新 Invidious 实例失败，继续使用当前快照", "error", err)
 	}
