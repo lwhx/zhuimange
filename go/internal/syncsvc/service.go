@@ -144,8 +144,8 @@ func (s *Service) refreshTMDBEpisodes(ctx context.Context, anime *model.Anime) {
 }
 
 // ensureManualPoster 手动动漫无封面时，用最高分视频缩略图补一个封面。
-// 优先用 Invidious 主实例的缩略图代理路径（国内可达），
-// 无可用实例时回退到 img.youtube.com（可能不可达，仅兜底）。
+// 统一使用 https://i.ytimg.com/vi/<id>/hqdefault.jpg：该域名已在 /api/proxy_image
+// 白名单内且为 HTTPS，前端通过代理输出，避免 Mixed Content 与域名白名单拦截。
 // 非手动动漫或已有封面时返回空串。对齐 Python _ensure_manual_poster。
 func (s *Service) ensureManualPoster(ctx context.Context, anime *model.Anime) string {
 	if !anime.IsManual() || anime.PosterURL != "" {
@@ -155,12 +155,7 @@ func (s *Service) ensureManualPoster(ctx context.Context, anime *model.Anime) st
 	if err != nil || videoID == "" {
 		return ""
 	}
-	var posterURL string
-	if base := s.finder.PrimaryInstanceURL(); base != "" {
-		posterURL = base + "/vi/" + videoID + "/hqdefault.jpg"
-	} else {
-		posterURL = "https://img.youtube.com/vi/" + videoID + "/hqdefault.jpg"
-	}
+	posterURL := "https://i.ytimg.com/vi/" + videoID + "/hqdefault.jpg"
 	if err := s.store.UpdateAnime(ctx, anime.ID, map[string]any{"poster_url": posterURL}); err != nil {
 		slog.Warn("自动设置封面失败", "anime_id", anime.ID, "error", err)
 		return ""

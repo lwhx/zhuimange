@@ -101,7 +101,10 @@ function escapeAttr(s) {
 
 function proxyImg(url) {
     if (!url) return '';
-    if (url.startsWith('https://')) return '/api/proxy_image?url=' + encodeURIComponent(url);
+    // 所有 http/https 外链统一走服务端代理，避免 Mixed Content 与跨域问题。
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return '/api/proxy_image?url=' + encodeURIComponent(url);
+    }
     return url;
 }
 

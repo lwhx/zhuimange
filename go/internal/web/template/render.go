@@ -209,15 +209,16 @@ func (m *Manager) RenderPartial(w io.Writer, partialTemplate string, data any) e
 	return tmpl.Execute(w, data)
 }
 
-// proxyImgFilter HTTPS 站点下把 http:// 图片改写为代理 URL。
+// proxyImgFilter 所有 http/https 外链统一改写为代理 URL。
+// 既避免 HTTPS 站点下的 Mixed Content，也保证 JS（proxyImg）与模板逻辑一致。
 func proxyImgFilter(url string, isHTTPS bool) string {
-	if url == "" || !strings.HasPrefix(url, "http://") {
+	if url == "" {
 		return url
 	}
-	if !isHTTPS {
-		return url
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return "/api/proxy_image?url=" + url
 	}
-	return "/api/proxy_image?url=" + url
+	return url
 }
 
 // IsHTTPSRequest 判断请求是否 HTTPS（含反代 X-Forwarded-Proto）。
