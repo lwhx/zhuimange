@@ -73,7 +73,17 @@ func (s *Service) RunAnimeSync(ctx context.Context, animeID int64, mode string, 
 	} else {
 		s.refreshTMDBEpisodes(ctx, anime)
 	}
-	episodes, err := s.store.FilterAiredEpisodes(ctx, animeID, time.Now().Format("2006-01-02"))
+	// 集数可见性：手动动漫用 ListEpisodes（全部集数，air_date 可能为空）；
+	// TMDB 动漫用 FilterAiredEpisodes（仅已开播集数）。
+	// 注意：FilterAiredEpisodes 的严格语义会过滤掉 air_date='' 的集数，
+	// 而手动动漫的集数通常没有 air_date，若用 FilterAiredEpisodes 会返回 0 集。
+	today := time.Now().Format("2006-01-02")
+	var episodes []*model.Episode
+	if anime.IsManual() {
+		episodes, err = s.store.ListEpisodes(ctx, animeID)
+	} else {
+		episodes, err = s.store.FilterAiredEpisodes(ctx, animeID, today)
+	}
 	if err != nil {
 		return s.fail(ctx, animeID, syncType, mode, err, emit)
 	}
