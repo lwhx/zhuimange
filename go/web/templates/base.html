@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{if .Title}}{{.Title}} - {{end}}追漫阁</title>
-    <link rel="stylesheet" href="/static/app.css?v=7">
+    <link rel="stylesheet" href="/static/app.css?v=8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- 内联主题初始化，避免 FOUC（闪烁） -->
     <script>
         (function() {
@@ -17,10 +20,12 @@
     <nav class="navbar">
         <a href="/" class="navbar__brand">📚 <span>追漫阁</span></a>
         <div class="navbar__links">
-            <a href="/" class="navbar__link">首页</a>
-            <a href="/stats" class="navbar__link">统计</a>
-            <a href="/diagnostics" class="navbar__link">诊断</a>
-            <a href="/settings" class="navbar__link">设置</a>
+            <a href="/" class="navbar__link {{if eq .ActiveNav "home"}}navbar__link--active{{end}}">🏠 首页</a>
+            <a href="/dashboard" class="navbar__link {{if eq .ActiveNav "dashboard"}}navbar__link--active{{end}}">🧭 看板</a>
+            <a href="/calendar" class="navbar__link {{if eq .ActiveNav "calendar"}}navbar__link--active{{end}}">🗓️ 日历</a>
+            <a href="/stats" class="navbar__link {{if eq .ActiveNav "stats"}}navbar__link--active{{end}}">📊 统计</a>
+            <a href="/diagnostics" class="navbar__link {{if eq .ActiveNav "diagnostics"}}navbar__link--active{{end}}">🔧 诊断</a>
+            <a href="/settings" class="navbar__link {{if eq .ActiveNav "settings"}}navbar__link--active{{end}}">⚙️ 设置</a>
             <div class="navbar__theme-selector">
                 <button type="button" class="navbar__theme-btn" onclick="toggleThemeDropdown()" title="切换主题">🎨</button>
                 <div class="theme-dropdown" id="theme-dropdown">
@@ -58,7 +63,7 @@
         </div>
     </nav>
 
-    <main class="main-content">
+    <main class="main-content fade-in">
         {{template "content" .}}
     </main>
 
@@ -79,8 +84,8 @@
 
     <script src="/static/htmx.min.js"></script>
     <script defer src="/static/alpine.min.js"></script>
-    <script src="/static/common.js?v=2"></script>
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/common.js?v=3"></script>
+    <script src="/static/app.js?v=6"></script>
 
     <!-- 页面专属脚本 -->
     {{block "scripts" .}}{{end}}

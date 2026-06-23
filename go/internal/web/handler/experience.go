@@ -23,7 +23,7 @@ func (h *AppHandlers) dashboardPage(w http.ResponseWriter, r *http.Request) {
     </div>
   </div>
   <div id="dash-root"></div>`
-	renderStandalonePage(w, r, "追更看板", body, "", "dashboard.js")
+	renderStandalonePage(w, r, "追更看板", body, "", "dashboard", "dashboard.js")
 }
 
 // calendarPage GET /calendar 追更日历（月历网格视图）。
@@ -46,7 +46,7 @@ func (h *AppHandlers) calendarPage(w http.ResponseWriter, r *http.Request) {
     <span class="cal-legend__item"><span class="cal-legend__dot cal-legend__dot--muted"></span> 无更新</span>
   </div>
   <div class="cal-grid" id="cal-grid"></div>`
-	renderStandalonePage(w, r, "追更日历", body, "", "calendar.js")
+	renderStandalonePage(w, r, "追更日历", body, "", "calendar", "calendar.js")
 }
 
 // dashboardAPI GET /api/dashboard 返回看板数据。

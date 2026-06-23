@@ -101,7 +101,7 @@ func (h *AppHandlers) diagnosticsPage(w http.ResponseWriter, r *http.Request) {
       <div class="diag-empty">暂无视频详情检测数据</div>
     </div>
   </section>`
-	renderStandalonePage(w, r, "诊断", body, "", "diagnostics.js")
+	renderStandalonePage(w, r, "诊断", body, "", "diagnostics", "diagnostics.js")
 }
 
 // statsPage GET /stats 观看统计页。
@@ -112,5 +112,5 @@ func (h *AppHandlers) statsPage(w http.ResponseWriter, r *http.Request) {
     <div class="page-actions"><button class="btn btn--primary" onclick="loadStats()">🔄 刷新</button></div>
   </div>
   <div id="stats-root"></div>`
-	renderStandalonePage(w, r, "统计", body, "", "stats.js")
+	renderStandalonePage(w, r, "统计", body, "", "stats", "stats.js")
 }

@@ -57,31 +57,91 @@ func (h *AppHandlers) health(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-// loginPageHTML 登录页（独立样式，不依赖 base 布局）。
+// loginPageHTML 登录页（引用主题系统 + app.css，与主站视觉统一）。
 const loginPageHTML = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="midnight">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>登录 - 追漫阁</title>
+<link rel="stylesheet" href="/static/app.css?v=8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>(function(){var s=localStorage.getItem('zmg-theme');if(s)document.documentElement.setAttribute('data-theme',s);})();</script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, "Noto Sans SC", sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-  .login-card { background: #1e293b; padding: 40px; border-radius: 12px; width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
-  h1 { text-align: center; margin-bottom: 8px; font-size: 1.5rem; }
-  .subtitle { text-align: center; color: #94a3b8; margin-bottom: 28px; font-size: 0.9rem; }
-  .form-group { margin-bottom: 16px; }
-  label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: #cbd5e1; }
-  input { width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.95rem; }
-  input:focus { outline: none; border-color: #3b82f6; }
-  .btn { width: 100%; padding: 11px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; margin-top: 8px; }
-  .btn:hover { background: #2563eb; }
-  .error { background: #7f1d1d; color: #fecaca; padding: 10px; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; text-align: center; }
+  body {
+    display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    background: var(--bg-primary); position: relative; overflow: hidden;
+  }
+  body::before {
+    content: ''; position: absolute; top: -20%; left: -10%; width: 60%; height: 60%;
+    background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+    filter: blur(60px); pointer-events: none;
+  }
+  body::after {
+    content: ''; position: absolute; bottom: -20%; right: -10%; width: 50%; height: 50%;
+    background: radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%);
+    filter: blur(60px); pointer-events: none;
+  }
+  .login-card {
+    position: relative; z-index: 1;
+    background: var(--glass-bg); backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    padding: 44px 36px; border-radius: var(--radius-lg); width: 380px;
+    box-shadow: var(--shadow-lg);
+    animation: fadeInUp 0.5s ease;
+  }
+  .login-card h1 {
+    text-align: center; margin-bottom: 6px; font-size: 1.6rem; font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .login-card h1 span {
+    background: var(--gradient-accent); -webkit-background-clip: text;
+    background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .login-card .subtitle {
+    text-align: center; color: var(--text-muted); margin-bottom: 32px; font-size: 0.9rem;
+  }
+  .login-card .form-group { margin-bottom: 18px; }
+  .login-card label {
+    display: block; margin-bottom: 8px; font-size: 0.85rem;
+    color: var(--text-secondary); font-weight: 500;
+  }
+  .login-card input {
+    width: 100%; padding: 12px 16px; font-size: 0.95rem;
+    background: var(--bg-input); border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm); color: var(--text-primary);
+    transition: all var(--transition-fast);
+  }
+  .login-card input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .login-card .btn {
+    width: 100%; padding: 13px; font-size: 1rem; font-weight: 700;
+    background: var(--gradient-accent); color: white; border: none;
+    border-radius: var(--radius-sm); cursor: pointer; margin-top: 8px;
+    box-shadow: 0 4px 14px var(--accent-glow);
+    transition: all var(--transition-fast);
+  }
+  .login-card .btn:hover {
+    box-shadow: 0 6px 22px var(--accent-glow);
+    transform: translateY(-1px);
+  }
+  .login-card .btn:active { transform: scale(0.97); }
+  .login-card .error {
+    background: rgba(239,68,68,0.15); color: var(--danger);
+    border: 1px solid rgba(239,68,68,0.3);
+    padding: 12px 16px; border-radius: var(--radius-sm);
+    margin-bottom: 18px; font-size: 0.85rem; text-align: center;
+  }
 </style>
 </head>
 <body>
   <div class="login-card">
-    <h1>📚 追漫阁</h1>
+    <h1>📚 <span>追漫阁</span></h1>
     <p class="subtitle">个人追更管理平台</p>{{ERROR_BLOCK}}
     <form method="POST" action="/login" onsubmit="return fillCsrfToken()">
       <input type="hidden" id="csrf_token" name="csrf_token" value="">
@@ -89,7 +149,7 @@ const loginPageHTML = `<!DOCTYPE html>
         <label>访问密码</label>
         <input type="password" name="password" placeholder="输入访问密码" autofocus>
       </div>
-      <button type="submit" class="btn">登录</button>
+      <button type="submit" class="btn">登 录</button>
     </form>
   </div>
 <script>

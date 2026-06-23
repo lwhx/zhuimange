@@ -17,10 +17,12 @@ import (
 
 // indexData 首页渲染数据。
 type indexData struct {
-	Animes       []*animeCardView
-	TotalCount   int
-	TotalSources int
-	Now          time.Time
+	Animes        []*animeCardView
+	TotalCount    int
+	TotalSources  int
+	ContinuingCount int
+	UnwatchedTotal  int
+	Now           time.Time
 }
 
 // animeCardView 首页卡片视图（含计算字段）。
@@ -58,6 +60,8 @@ func (h *AppHandlers) index(w http.ResponseWriter, r *http.Request) {
 
 	cards := make([]*animeCardView, 0, len(animes))
 	totalSources := 0
+	continueCount := 0
+	unwatchedTotal := 0
 	for _, a := range animes {
 		stats := cardStats[a.ID]
 		epCount := stats.EpisodeCount
@@ -66,6 +70,10 @@ func (h *AppHandlers) index(w http.ResponseWriter, r *http.Request) {
 			unwatched = epCount - a.WatchedEp
 		}
 		totalSources += stats.SourceCount
+		unwatchedTotal += unwatched
+		if a.Status == "Returning Series" || a.Status == "Continuing" {
+			continueCount++
+		}
 		cards = append(cards, &animeCardView{
 			Anime:          a,
 			UnwatchedCount: unwatched,
@@ -74,11 +82,14 @@ func (h *AppHandlers) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderPage(w, r, "index.html", &tmplpkg.RenderData{
-		Title: "首页",
+		Title:     "首页",
+		ActiveNav: "home",
 		Data: &indexData{
-			Animes:       cards,
-			TotalCount:   len(animes),
-			TotalSources: totalSources,
+			Animes:          cards,
+			TotalCount:      len(animes),
+			TotalSources:    totalSources,
+			ContinuingCount: continueCount,
+			UnwatchedTotal:  unwatchedTotal,
 			Now:          time.Now(),
 		},
 	})
@@ -144,7 +155,8 @@ func (h *AppHandlers) animeDetail(w http.ResponseWriter, r *http.Request) {
 	_ = watchedCount
 
 	renderPage(w, r, "anime_detail.html", &tmplpkg.RenderData{
-		Title: anime.TitleCN,
+		Title:     anime.TitleCN,
+		ActiveNav: "home",
 		Data: &animeDetailData{
 			Anime:          anime,
 			Episodes:       episodes,
@@ -268,8 +280,9 @@ func renderPage(w http.ResponseWriter, r *http.Request, page string, data *tmplp
 // renderStandalonePage 渲染独立页面（不走 base.html 模板）。
 // 用于统计/诊断/看板/日历等轻量页面，保证它们与主站共享主题系统、
 // navbar 和主题下拉选择器（避免跨页面主题不一致）。
+// activeNav 用于高亮当前页（home/dashboard/calendar/stats/diagnostics/settings）。
 // extraScripts 为需要额外引入的 /static/*.js 文件名列表（按顺序加载）。
-func renderStandalonePage(w http.ResponseWriter, r *http.Request, title, bodyHTML, scriptHTML string, extraScripts ...string) {
+func renderStandalonePage(w http.ResponseWriter, r *http.Request, title, bodyHTML, scriptHTML, activeNav string, extraScripts ...string) {
 	theme := "midnight"
 	if cookie, err := r.Cookie("zmg-theme"); err == nil && cookie.Value != "" {
 		theme = cookie.Value
@@ -279,8 +292,39 @@ func renderStandalonePage(w http.ResponseWriter, r *http.Request, title, bodyHTM
 		if s == "" {
 			continue
 		}
-		scriptTags += fmt.Sprintf(`<script src="/static/%s"></script>`, s)
+		scriptTags += fmt.Sprintf(`<script src="/static/%s?v=2"></script>`, s)
 	}
+	navLink := func(href, icon, name, nav string) string {
+		active := ""
+		if nav == activeNav {
+			active = " navbar__link--active"
+		}
+		return fmt.Sprintf(`<a href="%s" class="navbar__link%s">%s %s</a>`, href, active, icon, name)
+	}
+	navbar := `<nav class="navbar">` +
+		`<a href="/" class="navbar__brand">📚 <span>追漫阁</span></a>` +
+		`<div class="navbar__links">` +
+		navLink("/", "🏠", "首页", "home") +
+		navLink("/dashboard", "🧭", "看板", "dashboard") +
+		navLink("/calendar", "🗓️", "日历", "calendar") +
+		navLink("/stats", "📊", "统计", "stats") +
+		navLink("/diagnostics", "🔧", "诊断", "diagnostics") +
+		navLink("/settings", "⚙️", "设置", "settings") +
+		`<div class="navbar__theme-selector">` +
+		`<button type="button" class="navbar__theme-btn" onclick="toggleThemeDropdown()" title="切换主题">🎨</button>` +
+		`<div class="theme-dropdown" id="theme-dropdown">` +
+		`<div class="theme-dropdown__header"><span>🎨 配色方案</span><button type="button" class="theme-dropdown__close" onclick="toggleThemeDropdown()">&times;</button></div>` +
+		`<div class="theme-dropdown__list">` +
+		`<button type="button" class="theme-option" data-theme="midnight" onclick="setTheme('midnight')"><span class="theme-option__color" style="background:linear-gradient(135deg,#0b1120,#5b8cff)"></span><span class="theme-option__name">午夜蓝</span></button>` +
+		`<button type="button" class="theme-option" data-theme="ocean" onclick="setTheme('ocean')"><span class="theme-option__color" style="background:linear-gradient(135deg,#08102f,#4a9eff)"></span><span class="theme-option__name">深海</span></button>` +
+		`<button type="button" class="theme-option" data-theme="forest" onclick="setTheme('forest')"><span class="theme-option__color" style="background:linear-gradient(135deg,#0a1a12,#2dd4a0)"></span><span class="theme-option__name">森林</span></button>` +
+		`<button type="button" class="theme-option" data-theme="sunset" onclick="setTheme('sunset')"><span class="theme-option__color" style="background:linear-gradient(135deg,#1a0a1a,#f0509e)"></span><span class="theme-option__name">日落</span></button>` +
+		`<button type="button" class="theme-option" data-theme="light" onclick="setTheme('light')"><span class="theme-option__color" style="background:linear-gradient(135deg,#f1f4f9,#3b6eff)"></span><span class="theme-option__name">浅色</span></button>` +
+		`</div></div></div>` +
+		`<form method="POST" action="/logout" style="display:inline;">` +
+		`<button type="submit" class="navbar__link navbar__link--muted" style="background:none;border:none;cursor:pointer;font:inherit;padding:8px 10px;">退出</button>` +
+		`</form></div></nav>`
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html lang="zh-CN" data-theme="%s">
@@ -288,43 +332,20 @@ func renderStandalonePage(w http.ResponseWriter, r *http.Request, title, bodyHTM
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s - 追漫阁</title>
-<link rel="stylesheet" href="/static/app.css?v=7">
+<link rel="stylesheet" href="/static/app.css?v=8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script>(function(){var s=localStorage.getItem('zmg-theme');if(s)document.documentElement.setAttribute('data-theme',s);})();</script>
 </head>
 <body>
-<nav class="navbar">
-    <a href="/" class="navbar__brand">📚 <span>追漫阁</span></a>
-    <div class="navbar__links">
-        <a href="/" class="navbar__link">首页</a>
-        <a href="/stats" class="navbar__link">统计</a>
-        <a href="/dashboard" class="navbar__link">看板</a>
-        <a href="/calendar" class="navbar__link">日历</a>
-        <a href="/diagnostics" class="navbar__link">诊断</a>
-        <a href="/settings" class="navbar__link">设置</a>
-        <div class="navbar__theme-selector">
-            <button type="button" class="navbar__theme-btn" onclick="toggleThemeDropdown()" title="切换主题">🎨</button>
-            <div class="theme-dropdown" id="theme-dropdown">
-                <div class="theme-dropdown__header"><span>🎨 配色方案</span><button type="button" class="theme-dropdown__close" onclick="toggleThemeDropdown()">&times;</button></div>
-                <div class="theme-dropdown__list">
-                    <button type="button" class="theme-option" data-theme="midnight" onclick="setTheme('midnight')"><span class="theme-option__color" style="background:linear-gradient(135deg,#0f172a,#3b82f6)"></span><span class="theme-option__name">午夜蓝</span></button>
-                    <button type="button" class="theme-option" data-theme="ocean" onclick="setTheme('ocean')"><span class="theme-option__color" style="background:linear-gradient(135deg,#0c1844,#60a5fa)"></span><span class="theme-option__name">深海</span></button>
-                    <button type="button" class="theme-option" data-theme="forest" onclick="setTheme('forest')"><span class="theme-option__color" style="background:linear-gradient(135deg,#0d1f17,#34d399)"></span><span class="theme-option__name">森林</span></button>
-                    <button type="button" class="theme-option" data-theme="sunset" onclick="setTheme('sunset')"><span class="theme-option__color" style="background:linear-gradient(135deg,#1a0a1a,#f472b6)"></span><span class="theme-option__name">日落</span></button>
-                    <button type="button" class="theme-option" data-theme="light" onclick="setTheme('light')"><span class="theme-option__color" style="background:linear-gradient(135deg,#f8fafc,#3b82f6)"></span><span class="theme-option__name">浅色</span></button>
-                </div>
-            </div>
-        </div>
-        <form method="POST" action="/logout" style="display:inline;">
-            <button type="submit" class="navbar__link navbar__link--muted" style="background:none;border:none;cursor:pointer;font:inherit;padding:6px 10px;">退出</button>
-        </form>
-    </div>
-</nav>
-<main class="main-content">%s</main>
+%s
+<main class="main-content fade-in">%s</main>
 <div id="toast-container" class="toast-container"></div>
-<script src="/static/common.js?v=2"></script>
-<script src="/static/app.js?v=5"></script>
+<script src="/static/common.js?v=3"></script>
+<script src="/static/app.js?v=6"></script>
 %s
 <script>%s</script>
 </body>
-</html>`, theme, title, bodyHTML, scriptTags, scriptHTML)
+</html>`, theme, title, navbar, bodyHTML, scriptTags, scriptHTML)
 }

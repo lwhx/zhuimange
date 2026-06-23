@@ -4,34 +4,56 @@
     <p class="page-header__subtitle">{{.Data.TotalCount}} 部动漫 · {{.Data.TotalSources}} 个视频源</p>
 </div>
 
+{{if gt .Data.TotalCount 0}}
+<!-- 概览统计条 -->
+<div class="overview-bar">
+    <div class="overview-item">
+        <span class="overview-item__value">{{.Data.TotalCount}}</span>
+        <span class="overview-item__label">追更中</span>
+    </div>
+    <div class="overview-item">
+        <span class="overview-item__value">{{.Data.ContinuingCount}}</span>
+        <span class="overview-item__label">连载中</span>
+    </div>
+    <div class="overview-item">
+        <span class="overview-item__value">{{.Data.UnwatchedTotal}}</span>
+        <span class="overview-item__label">待观看</span>
+    </div>
+    <div class="overview-item">
+        <span class="overview-item__value">{{.Data.TotalSources}}</span>
+        <span class="overview-item__label">视频源</span>
+    </div>
+</div>
+{{end}}
+
 <!-- 搜索框 -->
 <div class="search-box">
     <div class="search-box__wrap">
-        <span class="search-box__icon">🔍</span>
         <input type="text" id="search-input" class="search-box__input" placeholder="搜索动漫名称添加（支持中英文，按 / 快速聚焦）">
+        <span class="search-box__icon">🔍</span>
     </div>
     <div id="search-results" class="search-results"></div>
 </div>
 
-<!-- 手动添加按钮 -->
+<!-- 手动添加 -->
 <div style="margin-bottom: 16px;">
     <button type="button" class="btn btn--secondary btn--sm" onclick="toggleManualAdd()">✏️ 手动添加动漫</button>
 </div>
 
 <!-- 手动添加表单 -->
-<div id="manual-add-form" class="manual-add-form" style="display:none;">
-    <h3 style="margin-bottom:12px;font-size:1rem;">手动添加动漫</h3>
-    <div class="form-group">
+<div id="manual-add-form" class="detail-panel" style="display:none;">
+    <h4>手动添加动漫</h4>
+    <div class="field-group">
         <label>动漫名称 *</label>
-        <input type="text" id="manual-title" placeholder="例: 斗破苍穹" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+        <input type="text" id="manual-title" placeholder="例: 斗破苍穹">
     </div>
-    <div class="form-group">
+    <div class="field-group">
         <label>总集数</label>
-        <input type="number" id="manual-total-ep" placeholder="例: 24" min="0" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+        <input type="number" id="manual-total-ep" placeholder="例: 24" min="0">
     </div>
-    <div class="form-group">
+    <div class="field-group">
         <label>别名（逗号分隔）</label>
-        <input type="text" id="manual-aliases" placeholder="例: BTTH, Battle Through the Heavens" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-sm);color:var(--text-primary);">
+        <input type="text" id="manual-aliases" placeholder="例: BTTH, Battle Through the Heavens">
     </div>
     <div style="display:flex;gap:8px;">
         <button type="button" class="btn btn--primary btn--sm" onclick="submitManualAdd(this)">添加</button>
@@ -42,14 +64,14 @@
 <!-- 动漫卡片网格 -->
 {{if .Data.Animes}}
 <div class="anime-grid">
-    {{range .Data.Animes}}
-    <a href="/anime/{{.ID}}" class="anime-card">
+    {{range $i, $a := .Data.Animes}}
+    <a href="/anime/{{.ID}}" class="anime-card" style="animation-delay:{{$i}}0ms">
         <div class="anime-card__poster-wrap">
             {{if .PosterURL}}
             <img class="anime-card__poster" src="{{proxyImg .PosterURL $.IsHTTPS}}" alt="{{.TitleCN}}" loading="lazy" decoding="async"
-                 onerror="this.style.opacity='0.3'">
+                 onerror="this.style.opacity='0.25'">
             {{else}}
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:3rem;opacity:0.3;">🎬</div>
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:3rem;opacity:0.2;">🎬</div>
             {{end}}
             {{if gt .UnwatchedCount 0}}
             <span class="anime-card__badge">{{.UnwatchedCount}} 新</span>
@@ -59,7 +81,6 @@
             <div class="anime-card__title">{{.TitleCN}}</div>
             <div class="anime-card__meta">
                 {{.WatchedEp}}/{{if gt .EpisodeCount 0}}{{.EpisodeCount}}{{else}}{{.TotalEpisodes}}{{end}} 集
-                {{if .LastSyncAt}} · 最近同步 {{sinceCN .LastSyncAt $.Data.Now}}{{end}}
             </div>
             {{if gt .EpisodeCount 0}}
             <div class="anime-card__progress">

@@ -31,7 +31,7 @@ var settingsWhitelist = map[string]bool{
 // settingsPage GET /settings 渲染设置页（模板化页面）。
 func (h *AppHandlers) settingsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	renderPage(w, r, "settings.html", &tmplpkg.RenderData{Title: "设置"})
+	renderPage(w, r, "settings.html", &tmplpkg.RenderData{Title: "设置", ActiveNav: "settings"})
 }
 
 // settingsAPI GET /api/settings 返回全部设置（敏感字段脱敏）。

@@ -156,11 +156,12 @@ func newManager(templateDir string, fsys fs.FS) (*Manager, error) {
 
 // RenderData 渲染上下文，传入页面模板的数据。
 type RenderData struct {
-	Title   string
-	Theme   string
-	Flashes []string
-	IsHTTPS bool
-	Data    any // 页面专用数据，模板内通过 .Data 访问
+	Title     string
+	Theme     string
+	Flashes   []string
+	IsHTTPS   bool
+	ActiveNav string // 当前导航页标识（home/stats/dashboard/calendar/diagnostics/settings），用于高亮
+	Data      any    // 页面专用数据，模板内通过 .Data 访问
 }
 
 // RenderPage 渲染指定页面：合并 base.html + 页面文件，执行 base.html。
