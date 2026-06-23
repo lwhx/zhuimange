@@ -110,24 +110,33 @@ func (s *Store) applyMigration(ctx context.Context, name string) error {
 // seedDefaults 初始化默认设置项与全局别名库（幂等，已存在则跳过）。
 func (s *Store) seedDefaults(ctx context.Context) error {
 	// 默认设置（仅当 key 不存在时插入）
+	// 注意：invidious_url / invidious_fallback_urls / invidious_instance_weights
+	// 不在此处种子化——它们由 .env 的 INVIDIOUS_URL 等环境变量提供默认值
+	// （loadPrimaryURL 在 settings 无值时回退到 config），用户在设置页修改后才落库。
+	// 若此处硬编码（如 yewtu.be），会覆盖 .env 配置且永不回退。
 	defaults := map[string]string{
-		"auto_sync_enabled":          "true",
-		"auto_sync_interval":         "360",
-		"match_threshold":            "50",
-		"match_recommend_threshold":  "70",
-		"invidious_url":              "https://yewtu.be",
-		"invidious_fallback_urls":    "[]",
-		"invidious_instance_weights": "{}",
-		"episode_sort_order":         "desc",
-		"tg_notify_enabled":          "false",
-		"tg_backup_enabled":          "false",
-		"tg_backup_interval_days":    "7",
+		"auto_sync_enabled":         "true",
+		"auto_sync_interval":        "360",
+		"match_threshold":           "50",
+		"match_recommend_threshold": "70",
+		"episode_sort_order":        "desc",
+		"tg_notify_enabled":         "false",
+		"tg_backup_enabled":         "false",
+		"tg_backup_interval_days":   "7",
 	}
 	for key, val := range defaults {
 		if _, err := s.db.ExecContext(ctx,
 			`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`, key, val); err != nil {
 			return fmt.Errorf("初始化设置 %s 失败: %w", key, err)
 		}
+	}
+
+	// 清理旧版本种子写入的 invidious 默认值（曾硬编码为 yewtu.be，覆盖了 .env 配置）。
+	// 删除后 loadPrimaryURL 会回退到 config.InvidiousURL（来自 .env），用户在设置页
+	// 修改后重新写入，此后以用户值为准。仅删除仍为旧默认值的行，避免覆盖用户自定义。
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM settings WHERE key = 'invidious_url' AND value = 'https://yewtu.be'`); err != nil {
+		slog.Warn("清理旧 invidious_url 种子值失败", "error", err)
 	}
 
 	// 全局别名库（国漫内置）
