@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,14 +212,18 @@ func (m *Manager) RenderPartial(w io.Writer, partialTemplate string, data any) e
 
 // proxyImgFilter 所有 http/https 外链统一改写为代理 URL。
 // 既避免 HTTPS 站点下的 Mixed Content，也保证 JS（proxyImg）与模板逻辑一致。
-func proxyImgFilter(url string, isHTTPS bool) string {
-	if url == "" {
-		return url
+// isHTTPS 现已不参与决策（统一代理），仅为兼容模板调用签名保留。
+func proxyImgFilter(raw string, isHTTPS bool) string {
+	if raw == "" {
+		return raw
 	}
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return "/api/proxy_image?url=" + url
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		// 与前端 common.js proxyImg 对齐：必须 QueryEscape，否则目标 URL 中的
+		// ?/&/# 会被服务端 Query().Get("url") 当成代理 URL 自身的 query 解析，
+		// 导致 url 被截断、代理取到半截地址而失败。
+		return "/api/proxy_image?url=" + url.QueryEscape(raw)
 	}
-	return url
+	return raw
 }
 
 // IsHTTPSRequest 判断请求是否 HTTPS（含反代 X-Forwarded-Proto）。
